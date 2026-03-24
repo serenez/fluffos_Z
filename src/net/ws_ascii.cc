@@ -94,6 +94,10 @@ int ws_ascii_callback(struct lws *wsi, enum lws_callback_reasons reason, void *u
       }
 
       auto ip = new_user(port, fd, reinterpret_cast<sockaddr *>(&addr), addrlen);
+      if (!ip) {
+        lwsl_err("LWS_CALLBACK_ESTABLISHED: new_user failed\n");
+        return -1;
+      }
 
       pss->user = ip;
       pss->buffer = evbuffer_new();

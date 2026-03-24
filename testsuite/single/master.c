@@ -7,9 +7,27 @@ inherit "/inherit/master/valid";
 
 nosave int has_error = 0;
 nosave string last_error = "";
+nosave mapping last_error_map = 0;
+nosave string test_login_ob = 0;
 
 public string clear_last_error() {
   last_error = "";
+  last_error_map = 0;
+}
+
+public mixed query_last_error_field(string key) {
+  if (!mapp(last_error_map)) {
+    return 0;
+  }
+  return last_error_map[key];
+}
+
+public void set_test_login_ob(string path) {
+  test_login_ob = path;
+}
+
+public void reset_test_login_ob() {
+  test_login_ob = 0;
 }
 
 // find stack right before __assert
@@ -69,8 +87,9 @@ object connect()
 {
   object login_ob;
   mixed err;
+  string login_path = test_login_ob || LOGIN_OB;
 
-  err = catch(login_ob = new(LOGIN_OB));
+  err = catch(login_ob = new(login_path));
 
   if (err) {
     write("It looks like someone is working on the player object.\n");
@@ -289,6 +308,7 @@ staticf void error_handler(mapping map, int flag) {
           (: sprintf("Line: %O  File: %O Object: %O Program: %O", $1["line"], $1["file"], $1["object"] || "No object", $1["program"] ||
                      "No program") :)), "\n"));
   last_error = str;
+  last_error_map = map;
   write_file("/log/log", str);
   if (!flag && ob) tell_object(ob, str);
 }

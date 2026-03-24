@@ -71,6 +71,27 @@ struct UserEventData {
   int idx;
 };
 
+constexpr int kUserReadChunkSize = 64 * 1024;
+
+bool ensure_text_tail_capacity(interactive_t *ip, int extra_bytes) {
+  if (!ip || extra_bytes < 0) {
+    return false;
+  }
+
+  int available = ip->text_capacity - ip->text_end;
+  if (available >= extra_bytes) {
+    return true;
+  }
+
+  interactive_compact_text(ip);
+  available = ip->text_capacity - ip->text_end;
+  if (available >= extra_bytes) {
+    return true;
+  }
+
+  return interactive_ensure_text_capacity(ip, ip->text_end + extra_bytes);
+}
+
 bool decode_mud_packet_size(const char *buffer, int *packet_size) {
   uint32_t network_size = 0;
   std::memcpy(&network_size, buffer, sizeof(network_size));
@@ -83,6 +104,11 @@ bool decode_mud_packet_size(const char *buffer, int *packet_size) {
   *packet_size = decoded_size;
   return true;
 }
+}  // namespace
+
+bool mud_packet_is_complete(int packet_size, int text_end) {
+  return packet_size > 0 && text_end == packet_size + static_cast<int>(sizeof(uint32_t));
+}
 
 void maybe_schedule_user_command(interactive_t *user) {
   // If user has a complete command, schedule a command execution.
@@ -92,6 +118,7 @@ void maybe_schedule_user_command(interactive_t *user) {
     evtimer_add(user->ev_command, &zero_sec);
   }
 }
+namespace {
 
 void on_user_command(evutil_socket_t fd, short what, void *arg) {
   debug(event, "User has an full command ready: %d:%s%s%s%s \n", (int)fd,
@@ -211,6 +238,10 @@ void new_conn_handler(evconnlistener *listener, evutil_socket_t fd, struct socka
     auto *base = evconnlistener_get_base(listener);
 
     auto *user = new_user(port, fd, addr, addrlen);
+    if (!user) {
+      evutil_closesocket(fd);
+      return;
+    }
     new_user_event_listener(base, user);
 
     if (user->connection_type == PORT_TYPE_TELNET) {
@@ -238,6 +269,9 @@ interactive_t *new_user(port_def_t *port, evutil_socket_t fd, sockaddr *addr,
    * initialize new user interactive data structure.
    */
   auto *user = user_add();
+  if (!user) {
+    return nullptr;
+  }
 
   user->connection_type = port->kind;
   user->ob = master_ob;
@@ -717,7 +751,7 @@ void flush_message_all() {
  */
 void get_user_data(interactive_t *ip) {
   int num_bytes, text_space;
-  unsigned char buf[MAX_TEXT];
+  unsigned char buf[kUserReadChunkSize];
 
   text_space = sizeof(buf);
 
@@ -729,30 +763,35 @@ void get_user_data(interactive_t *ip) {
       // Impossible, we don't handle it here.
       break;
     case PORT_TYPE_TELNET:
-      text_space = sizeof(ip->text) - ip->text_end;
-
-      /* check if we need more space */
-      if (text_space < sizeof(ip->text) / 16) {
-        if (ip->text_start > 0) {
-          memmove(ip->text, ip->text + ip->text_start, ip->text_end - ip->text_start);
-          text_space += ip->text_start;
-          ip->text_end -= ip->text_start;
-          ip->text_start = 0;
-        }
-        if (text_space < sizeof(ip->text) / 16) {
-          ip->iflags |= SKIP_COMMAND;
-          ip->text_start = ip->text_end = 0;
-          text_space = sizeof(ip->text);
+      if (!ensure_text_tail_capacity(ip, 2)) {
+        ip->iflags |= SKIP_COMMAND;
+        interactive_reset_text(ip);
+        if (!ensure_text_tail_capacity(ip, 2)) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
         }
       }
+      text_space = ip->text_capacity - ip->text_end - 1;
+      if (text_space > static_cast<int>(sizeof(buf))) text_space = sizeof(buf);
       break;
 
     case PORT_TYPE_MUD:
       if (ip->text_end < 4) {
+        if (!interactive_ensure_text_capacity(ip, 5)) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
+        }
         text_space = 4 - ip->text_end;
       } else {
         int packet_size = 0;
         if (!decode_mud_packet_size(ip->text, &packet_size)) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
+        }
+        if (!interactive_ensure_text_capacity(ip, packet_size + 5)) {
           ip->iflags |= NET_DEAD;
           remove_interactive(ip->ob, 0);
           return;
@@ -764,6 +803,21 @@ void get_user_data(interactive_t *ip) {
           return;
         }
       }
+      if (text_space > static_cast<int>(sizeof(buf))) text_space = sizeof(buf);
+      break;
+
+    case PORT_TYPE_ASCII:
+      if (!ensure_text_tail_capacity(ip, 2)) {
+        ip->iflags |= SKIP_COMMAND;
+        interactive_reset_text(ip);
+        if (!ensure_text_tail_capacity(ip, 2)) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
+        }
+      }
+      text_space = ip->text_capacity - ip->text_end - 1;
+      if (text_space > static_cast<int>(sizeof(buf))) text_space = sizeof(buf);
       break;
 
     default:
@@ -821,34 +875,39 @@ void get_user_data(interactive_t *ip) {
       }
       break;
     }
-    case PORT_TYPE_MUD:
+    case PORT_TYPE_MUD: {
       memcpy(ip->text + ip->text_end, buf, num_bytes);
       ip->text_end += num_bytes;
 
-      if (num_bytes == text_space) {
-        if (ip->text_end == 4) {
-          int packet_size = 0;
-          if (!decode_mud_packet_size(ip->text, &packet_size)) {
-            ip->iflags |= NET_DEAD;
-            remove_interactive(ip->ob, 0);
-            return;
-          }
-        } else {
-          svalue_t value;
-
-          ip->text[ip->text_end] = 0;
-          if (restore_svalue(ip->text + 4, &value) == 0) {
-            STACK_INC;
-            *sp = value;
-          } else {
-            push_undefined();
-          }
-          ip->text_end = 0;
-          set_eval(max_eval_cost);
-          safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
-        }
+      if (ip->text_end < static_cast<int>(sizeof(uint32_t))) {
+        break;
       }
+
+      int packet_size = 0;
+      if (!decode_mud_packet_size(ip->text, &packet_size)) {
+        ip->iflags |= NET_DEAD;
+        remove_interactive(ip->ob, 0);
+        return;
+      }
+
+      if (!mud_packet_is_complete(packet_size, ip->text_end)) {
+        break;
+      }
+
+      svalue_t value;
+
+      ip->text[ip->text_end] = 0;
+      if (restore_svalue(ip->text + 4, &value) == 0) {
+        STACK_INC;
+        *sp = value;
+      } else {
+        push_undefined();
+      }
+      ip->text_end = 0;
+      set_eval(max_eval_cost);
+      safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
       break;
+    }
 
     case PORT_TYPE_ASCII: {
       char *nl, *p;
@@ -876,7 +935,7 @@ void get_user_data(interactive_t *ip) {
         }
 
         if (ip->text_start == ip->text_end) {
-          ip->text_start = ip->text_end = 0;
+          interactive_reset_text(ip);
           break;
         }
 
@@ -905,7 +964,10 @@ static int clean_buf(interactive_t *ip) {
 
   /* if we've advanced beyond the end of the buffer, reset it */
   if (ip->text_start >= ip->text_end) {
-    ip->text_start = ip->text_end = 0;
+    // Keep the last extracted command bytes intact until callers finish
+    // consuming the returned pointer from first_cmd_in_buf().
+    ip->text_start = 0;
+    ip->text_end = 0;
   }
 
   /* if we're skipping the current command, check to see if it has been
@@ -930,20 +992,11 @@ void on_user_websocket_received(interactive_t *ip, const char *data, size_t len)
     return;
   }
 
-  auto text_space = sizeof(ip->text) - ip->text_end;
-
-  /* check if we need more space */
-  if (text_space < len) {
-    if (ip->text_start > 0) {
-      memmove(ip->text, ip->text + ip->text_start, ip->text_end - ip->text_start);
-      text_space += ip->text_start;
-      ip->text_end -= ip->text_start;
-      ip->text_start = 0;
-    }
-    if (text_space < len) {
-      ip->iflags |= SKIP_COMMAND;
-      ip->text_start = ip->text_end = 0;
-      text_space = sizeof(ip->text);
+  if (!ensure_text_tail_capacity(ip, static_cast<int>(len) + 1)) {
+    ip->iflags |= SKIP_COMMAND;
+    interactive_reset_text(ip);
+    if (!ensure_text_tail_capacity(ip, static_cast<int>(len) + 1)) {
+      return;
     }
   }
 
@@ -989,8 +1042,8 @@ static const int ANSI_SUBSTITUTE = 0x20;
 // client will actually send entire line. In ascii mode, we will get an single char input
 // each time.
 void on_user_input(interactive_t *ip, const char *data, size_t len) {
-  for (int i = 0; i < len; i++) {
-    if (ip->text_end == sizeof(ip->text) - 1) {
+  for (size_t i = 0; i < len; i++) {
+    if (ip->text_end >= ip->text_capacity - 1 && !ensure_text_tail_capacity(ip, 2)) {
       // No more space
       break;
     }
@@ -1125,6 +1178,8 @@ static char *get_user_command(interactive_t *ip) {
   return user_command;
 } /* get_user_command() */
 
+char *extract_first_command_for_test(interactive_t *ip) { return first_cmd_in_buf(ip); }
+
 static int escape_command(interactive_t *ip, const char *user_command) {
   if (user_command[0] != '!') {
     return 0;
@@ -1227,7 +1282,7 @@ int process_user_command(interactive_t *ip) {
       /* only 1 char ... switch to line buffer mode */
       ip->iflags |= WAS_SINGLE_CHAR;
       ip->iflags &= ~SINGLE_CHAR;
-      ip->text_start = ip->text_end = *ip->text = 0;
+      interactive_reset_text(ip);
       set_linemode(ip, true);
     } else {
       if (ip->iflags & WAS_SINGLE_CHAR) {
@@ -1401,6 +1456,7 @@ void remove_interactive(object_t *ob, int dested) {
   }
 
   user_del(ip);
+  interactive_free_text(ip);
   FREE(ip);
   ob->interactive = nullptr;
   free_object(&ob, "remove_interactive");

@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/event.h>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -11,13 +14,20 @@
 
 #include "base/internal/rc.h"
 #include "base/internal/strutils.h"
+#include "comm.h"
 #include "compiler/internal/compiler.h"
 #include "compiler/internal/scratchpad.h"
+#include "interactive.h"
 #include "packages/core/heartbeat.h"
+#include "packages/gateway/gateway.h"
+#include "user.h"
 #include "vm/internal/base/array.h"
 #include "vm/internal/base/object.h"
 #include "vm/internal/base/program.h"
 #include "vm/internal/eval_limit.h"
+#include "vm/internal/simulate.h"
+
+char *extract_first_command_for_test(interactive_t *ip);
 
 namespace {
 
@@ -39,6 +49,65 @@ std::string compile_log_delta(std::streamoff start_offset) {
   std::ostringstream content;
   content << file.rdbuf();
   return content.str();
+}
+
+svalue_t *call_lpc_method(object_t *ob, const char *method, int num_args = 0) {
+  save_command_giver(ob);
+  set_eval(max_eval_cost);
+  auto *ret = safe_apply(method, ob, num_args, ORIGIN_DRIVER);
+  restore_command_giver();
+  return ret;
+}
+
+void clear_master_error_state() {
+  ASSERT_NE(master_ob, nullptr);
+  call_lpc_method(master_ob, "clear_last_error");
+}
+
+std::string query_master_error_string_field(const char *key) {
+  push_constant_string(key);
+  auto *ret = call_lpc_method(master_ob, "query_last_error_field", 1);
+  if (!ret || ret->type != T_STRING || ret->u.string == nullptr) {
+    return {};
+  }
+  return ret->u.string;
+}
+
+LPC_INT query_master_error_int_field(const char *key) {
+  push_constant_string(key);
+  auto *ret = call_lpc_method(master_ob, "query_last_error_field", 1);
+  if (!ret || ret->type != T_NUMBER) {
+    return 0;
+  }
+  return ret->u.number;
+}
+
+void set_test_login_object(const char *path) {
+  push_constant_string(path);
+  call_lpc_method(master_ob, "set_test_login_ob", 1);
+}
+
+void reset_test_login_object() { call_lpc_method(master_ob, "reset_test_login_ob"); }
+
+LPC_INT call_gateway_config_number(const char *key) {
+  push_constant_string(key);
+  st_num_arg = 1;
+  f_gateway_config();
+  EXPECT_EQ(T_NUMBER, sp->type);
+  auto result = sp->u.number;
+  pop_stack();
+  return result;
+}
+
+LPC_INT call_gateway_config_number(const char *key, LPC_INT value) {
+  push_constant_string(key);
+  push_number(value);
+  st_num_arg = 2;
+  f_gateway_config();
+  EXPECT_EQ(T_NUMBER, sp->type);
+  auto result = sp->u.number;
+  pop_stack();
+  return result;
 }
 
 }  // namespace
@@ -155,6 +224,66 @@ TEST_F(DriverTest, TestSyntaxErrorAtEndOfFileReportsSourceLineContext) {
   ASSERT_NE(compile_log.find("/single/tests/compiler/fail/line_error_direct.c line 1, column 18: syntax error"),
             std::string::npos);
   ASSERT_NE(compile_log.find("broken_identifier"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestMasterErrorHandlerReceivesCompileDiagnosticFieldsForDirectSyntaxError) {
+  struct object_t *obj = nullptr;
+
+  clear_master_error_state();
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    obj = find_object("/single/tests/compiler/fail/line_error_direct");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_EQ(obj, nullptr);
+  EXPECT_EQ("/single/tests/compiler/fail/line_error_direct",
+            query_master_error_string_field("compile_error_object"));
+  EXPECT_EQ("/single/tests/compiler/fail/line_error_direct.c",
+            query_master_error_string_field("compile_error_file"));
+  EXPECT_EQ(1, query_master_error_int_field("compile_error_line"));
+  EXPECT_EQ(18, query_master_error_int_field("compile_error_column"));
+  EXPECT_EQ("syntax error, unexpected end of file, expecting L_ASSIGN or ';' or '(' or ','",
+            query_master_error_string_field("compile_error_message"));
+  EXPECT_EQ("broken_identifier", query_master_error_string_field("compile_error_source"));
+
+  auto caret = query_master_error_string_field("compile_error_caret");
+  ASSERT_GT(caret.size(), static_cast<size_t>(17));
+  EXPECT_EQ('^', caret[17]);
+}
+
+TEST_F(DriverTest, TestMasterErrorHandlerReceivesHeaderDiagnosticFieldsForIncludeFailure) {
+  struct object_t *obj = nullptr;
+
+  clear_master_error_state();
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    obj = find_object("/single/tests/compiler/fail/line_error_include");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_EQ(obj, nullptr);
+  EXPECT_EQ("/single/tests/compiler/fail/line_error_include",
+            query_master_error_string_field("compile_error_object"));
+  EXPECT_EQ("/include/line_error_bad_header.h",
+            query_master_error_string_field("compile_error_file"));
+  EXPECT_EQ(2, query_master_error_int_field("compile_error_line"));
+  EXPECT_EQ(18, query_master_error_int_field("compile_error_column"));
+  EXPECT_EQ("syntax error, unexpected L_BASIC_TYPE, expecting L_ASSIGN or ';' or '(' or ','",
+            query_master_error_string_field("compile_error_message"));
+  EXPECT_EQ("int header_broken", query_master_error_string_field("compile_error_source"));
+
+  auto caret = query_master_error_string_field("compile_error_caret");
+  ASSERT_GT(caret.size(), static_cast<size_t>(17));
+  EXPECT_EQ('^', caret[17]);
 }
 
 TEST_F(DriverTest, TestDirectFunctionArgumentTypeErrorHighlightsBadArgument) {
@@ -320,6 +449,167 @@ TEST_F(DriverTest, TestHeartbeatIntervalLifecycle) {
   EXPECT_EQ(1, set_heart_beat(&ob, 0));
   EXPECT_EQ(0, query_heart_beat(&ob));
   EXPECT_FALSE(ob.flags & O_HEART_BEAT);
+}
+
+TEST_F(DriverTest, TestGatewaySessionDestroyReleasesInteractiveReference) {
+  svalue_t login_data{};
+  login_data.type = T_NUMBER;
+  login_data.u.number = 0;
+
+  set_test_login_object("/clone/gateway_login_example");
+  auto *ob =
+      gateway_create_session_internal(1, "unit-test-session", &login_data, "127.0.0.1", 9527);
+  reset_test_login_object();
+
+  ASSERT_NE(ob, nullptr);
+  ASSERT_NE(ob->interactive, nullptr);
+  EXPECT_TRUE(ob->interactive->iflags & GATEWAY_SESSION);
+
+  add_ref(ob, "DriverTest::TestGatewaySessionDestroyReleasesInteractiveReference");
+  auto ref_before_destroy = ob->ref;
+
+  ASSERT_EQ(1, gateway_destroy_session_internal("unit-test-session", "unit_test", "done"));
+  ASSERT_EQ(nullptr, ob->interactive);
+  EXPECT_EQ(ref_before_destroy - 1, ob->ref);
+
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestGatewaySessionDestroyReleasesInteractiveReference");
+}
+
+TEST_F(DriverTest, TestInteractiveBufferRestoredToOneMiB) {
+  EXPECT_EQ(1 * 1024 * 1024, MAX_TEXT);
+}
+
+TEST_F(DriverTest, TestInteractiveStateDoesNotEmbedFullMaxTextBuffer) {
+  EXPECT_LT(sizeof(interactive_t), static_cast<size_t>(64 * 1024));
+}
+
+TEST_F(DriverTest, TestInteractiveBufferStartsSmallAndCanGrowOnDemand) {
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  EXPECT_EQ(INTERACTIVE_TEXT_INITIAL_CAPACITY, ip->text_capacity);
+  EXPECT_LT(ip->text_capacity, MAX_TEXT);
+
+  EXPECT_TRUE(interactive_ensure_text_capacity(ip, 128 * 1024));
+  EXPECT_GE(ip->text_capacity, 128 * 1024);
+  EXPECT_LE(ip->text_capacity, MAX_TEXT);
+  EXPECT_FALSE(interactive_ensure_text_capacity(ip, MAX_TEXT + 1));
+
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+}
+
+TEST_F(DriverTest, TestGatewaySessionStartsWithSmallSharedInputBuffer) {
+  svalue_t login_data{};
+  login_data.type = T_NUMBER;
+  login_data.u.number = 0;
+
+  set_test_login_object("/clone/gateway_login_example");
+  auto *ob = gateway_create_session_internal(1, "unit-test-small-buffer", &login_data,
+                                             "127.0.0.1", 9527);
+  reset_test_login_object();
+
+  ASSERT_NE(ob, nullptr);
+  ASSERT_NE(ob->interactive, nullptr);
+  EXPECT_EQ(INTERACTIVE_TEXT_INITIAL_CAPACITY, ob->interactive->text_capacity);
+  EXPECT_LT(ob->interactive->text_capacity, MAX_TEXT);
+
+  ASSERT_EQ(1, gateway_destroy_session_internal("unit-test-small-buffer", "unit_test", "done"));
+  destruct_object(ob);
+}
+
+TEST_F(DriverTest, TestMudPacketCompletionRequiresFullPayloadBytes) {
+  constexpr int kPacketSize = 128 * 1024;
+
+  EXPECT_FALSE(mud_packet_is_complete(kPacketSize, 4));
+  EXPECT_FALSE(mud_packet_is_complete(kPacketSize, 64 * 1024 + 4));
+  EXPECT_FALSE(mud_packet_is_complete(kPacketSize, kPacketSize + 3));
+  EXPECT_TRUE(mud_packet_is_complete(kPacketSize, kPacketSize + 4));
+}
+
+TEST_F(DriverTest, TestExtractFirstCommandPreservesLastBufferedLineCommand) {
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+
+  std::memcpy(ip->text, "look\n", 5);
+  ip->text_end = 5;
+  ip->text_start = 0;
+
+  auto *command = extract_first_command_for_test(ip);
+  ASSERT_NE(command, nullptr);
+  EXPECT_STREQ("look", command);
+
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+}
+
+TEST_F(DriverTest, TestProcessUserCommandKeepsLastLineBufferedCommandIntact) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+
+  auto *base = event_base_new();
+  ASSERT_NE(base, nullptr);
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+
+  ip->ob = ob;
+  ip->connection_type = PORT_TYPE_ASCII;
+  ip->prompt = "> ";
+  ip->iflags = CMD_IN_BUF | HAS_PROCESS_INPUT;
+  ip->ev_buffer = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+  ASSERT_NE(ip->ev_buffer, nullptr);
+  ob->interactive = ip;
+
+  std::memcpy(ip->text, "look\n", 5);
+  ip->text_end = 5;
+  ip->text_start = 0;
+
+  EXPECT_EQ(1, process_user_command(ip));
+
+  auto *ret = call_lpc_method(ob, "query_last_input");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_STRING, ret->type);
+  ASSERT_NE(ret->u.string, nullptr);
+  EXPECT_STREQ("look", ret->u.string);
+
+  ob->interactive = nullptr;
+  bufferevent_free(ip->ev_buffer);
+  ip->ev_buffer = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestProcessUserCommandKeepsLastLineBufferedCommandIntact");
+  event_base_free(base);
+}
+
+TEST_F(DriverTest, TestGatewayMaxPacketSizeRemainsIndependentFromMaxText) {
+  auto original = g_gateway_max_packet_size;
+  constexpr LPC_INT kRequestedPacketSize = 2 * 1024 * 1024;
+
+  EXPECT_EQ(kRequestedPacketSize, call_gateway_config_number("max_packet_size", kRequestedPacketSize));
+  EXPECT_EQ(static_cast<size_t>(kRequestedPacketSize), g_gateway_max_packet_size);
+  EXPECT_GT(g_gateway_max_packet_size, static_cast<size_t>(MAX_TEXT));
+  EXPECT_EQ(kRequestedPacketSize, call_gateway_config_number("max_packet_size"));
+
+  g_gateway_max_packet_size = original;
 }
 
 TEST_F(DriverTest, TestConfigKeepsConfiguredMaximumLocalVariables) {

@@ -135,6 +135,7 @@ static void cleanup_temp_gateway_interactive(object_t* owner) {
     }
 
     user_del(ip);
+    interactive_free_text(ip);
     FREE(ip);
     owner->interactive = nullptr;
 }
@@ -316,6 +317,11 @@ object_t* gateway_create_session_internal(int master_fd, const char* session_id,
 
     // 创建虚拟 interactive_t
     interactive_t* user = user_add();
+    if (!user) {
+        master_ob->flags &= ~O_ONCE_INTERACTIVE;
+        g_sessions.erase(session_id);
+        return nullptr;
+    }
     user->connection_type = PORT_TYPE_GATEWAY;
     user->ob = master_ob;
     user->last_time = get_current_time();
@@ -336,6 +342,7 @@ object_t* gateway_create_session_internal(int master_fd, const char* session_id,
         if (user->gateway_session_id) FREE_MSTR(user->gateway_session_id);
         if (user->gateway_real_ip) FREE_MSTR(user->gateway_real_ip);
         user_del(user);
+        interactive_free_text(user);
         FREE(user);
         master_ob->flags &= ~O_ONCE_INTERACTIVE;
         g_sessions.erase(session_id);
@@ -488,10 +495,12 @@ int gateway_inject_input_internal(object_t* user, const char* input) {
     if (input_len == 0) return 0;
 
     // 边界检查：确保缓冲区空间足够
-    size_t available = sizeof(ip->text) - ip->text_end - 2; // -2 for '\n' and '\0'
-    if (input_len > available) {
+    interactive_compact_text(ip);
+    int required_size = ip->text_end + static_cast<int>(input_len) + 2; // '\n' and '\0'
+    if (required_size > MAX_TEXT || !interactive_ensure_text_capacity(ip, required_size)) {
+        int available = ip->text_capacity - ip->text_end - 2;
         GW_DEBUG("[Gateway] inject_input: buffer full (need=%zu, avail=%zu)\n",
-                 input_len, available);
+                 input_len, static_cast<size_t>(available > 0 ? available : 0));
         return 0;
     }
 
@@ -769,7 +778,6 @@ void f_gateway_session_send() {
                 yyjson_mut_val* data_val = svalue_to_json_impl(doc, data, &checker, 0);
 
                 if (!data_val) {
-                    yyjson_mut_doc_free(doc);
                     debug_message("[Gateway] Failed to serialize mapping data\n");
                     send_result = 0;
                 } else {
@@ -809,7 +817,6 @@ void f_gateway_session_send() {
                 yyjson_mut_val* data_val = svalue_to_json_impl(doc, data, &checker, 0);
 
                 if (!data_val) {
-                    yyjson_mut_doc_free(doc);
                     debug_message("[Gateway] Failed to serialize non-mapping data\n");
                     send_result = 0;
                 } else {
@@ -836,6 +843,7 @@ void f_gateway_session_send() {
             // 清理 JSON 文档
             if (doc) {
                 yyjson_mut_doc_free(doc);
+                doc = nullptr;
             }
         }
 
@@ -847,6 +855,7 @@ void f_gateway_session_send() {
         // 清理 JSON 文档（如果已创建）
         if (doc) {
             yyjson_mut_doc_free(doc);
+            doc = nullptr;
         }
     }
 

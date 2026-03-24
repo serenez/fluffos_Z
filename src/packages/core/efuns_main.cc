@@ -1249,7 +1249,13 @@ int calculate_and_maybe_print_memory_info(outbuffer_t *ob, int verbose) {
   tot += tot_alloc_object_size;
 
   auto total_users = (uint64_t)users_num(true);
-  auto total_users_size = total_users * sizeof(interactive_t);
+  uint64_t total_users_size = 0;
+  for (auto *user : users()) {
+    total_users_size += sizeof(interactive_t);
+    if (user->text) {
+      total_users_size += user->text_capacity;
+    }
+  }
   if (verbose != -1) {
     outbuf_addv(ob, "%-20s %8" PRIu64 " %8" PRIu64 "\n", "Interactives", total_users,
                 total_users_size);

@@ -67,7 +67,7 @@
 
 
 /* First part of user prologue.  */
-#line 11 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 11 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
 
 #include "base/std.h"
 
@@ -234,7 +234,7 @@ int func_present;
 int yyparse (void);
 
 
-#line 238 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 238 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -2499,146 +2499,146 @@ yyreduce:
     switch (yyn)
       {
   case 2: /* all: program  */
-#line 359 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 359 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
           { rule_program((yyval.node)); }
-#line 2505 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2505 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 3: /* program: program def possible_semi_colon  */
-#line 363 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 363 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   { CREATE_TWO_VALUES((yyval.node), 0, (yyvsp[-2].node), (yyvsp[-1].node)); }
-#line 2511 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2511 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 4: /* program: %empty  */
-#line 364 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 364 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                         { (yyval.node) = 0; }
-#line 2517 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2517 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 6: /* possible_semi_colon: ';'  */
-#line 369 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 369 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
         { yywarn("Extra ';'. Ignored."); }
-#line 2523 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2523 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 7: /* inheritance: type_modifier_list L_INHERIT string_con1 ';'  */
-#line 373 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 373 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                                { if (rule_inheritence(&(yyval.node), (yyvsp[-3].number), (yyvsp[-1].string))) { YYACCEPT; } }
-#line 2529 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2529 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 8: /* real: L_REAL  */
-#line 377 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 377 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
          { CREATE_REAL((yyval.node), (yyvsp[0].real)); }
-#line 2535 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2535 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 9: /* number: L_NUMBER  */
-#line 381 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 381 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
            { CREATE_NUMBER((yyval.node), (yyvsp[0].number)); }
-#line 2541 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2541 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 10: /* optional_star: %empty  */
-#line 385 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 385 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                         { (yyval.number) = 0; }
-#line 2547 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2547 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 11: /* optional_star: '*'  */
-#line 386 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 386 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                 { (yyval.number) = TYPE_MOD_ARRAY; }
-#line 2553 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2553 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 12: /* block_or_semi: block  */
-#line 391 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 391 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
           {
             (yyval.node) = (yyvsp[0].decl).node;
             if (!(yyval.node)) {
               CREATE_RETURN((yyval.node), 0);
             }
           }
-#line 2564 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2564 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 13: /* block_or_semi: ';'  */
-#line 397 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 397 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
           { (yyval.node) = 0; }
-#line 2570 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2570 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 14: /* block_or_semi: error  */
-#line 398 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 398 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
           { (yyval.node) = 0; }
-#line 2576 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2576 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 15: /* identifier: L_DEFINED_NAME  */
-#line 402 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 402 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   { (yyval.string) = scratch_copy((yyvsp[0].ihe)->name); }
-#line 2582 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2582 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 17: /* anchored_identifier: L_IDENTIFIER  */
-#line 408 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 408 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               (yyval.anchored_string).name = (yyvsp[0].string);
                                               (yyval.anchored_string).anchor =
                                                   push_diagnostic_anchor(query_last_non_eof_token_location());
                                             }
-#line 2592 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2592 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 18: /* anchored_identifier: L_DEFINED_NAME  */
-#line 414 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 414 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               (yyval.anchored_string).name = scratch_copy((yyvsp[0].ihe)->name);
                                               (yyval.anchored_string).anchor =
                                                   push_diagnostic_anchor(query_last_non_eof_token_location());
                                             }
-#line 2602 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2602 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 19: /* $@1: %empty  */
-#line 423 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 423 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   { (yyvsp[-2].number) = rule_func_type((yyvsp[-2].number), (yyvsp[-1].number),
                                                            (yyvsp[0].anchored_string).name,
                                                            (yyvsp[0].anchored_string).anchor); }
-#line 2610 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2610 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 20: /* @2: %empty  */
-#line 426 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 426 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   { (yyval.number) = rule_func_proto((yyvsp[-6].number), (yyvsp[-5].number),
                                                                  &(yyvsp[-4].anchored_string).name,
                                                                  (yyvsp[-1].argument),
                                                                  (yyvsp[-4].anchored_string).anchor); }
-#line 2619 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2619 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 21: /* function: type optional_star anchored_identifier $@1 '(' argument ')' @2 block_or_semi  */
-#line 430 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 430 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   { rule_func(&(yyval.node), (yyvsp[-8].number), (yyvsp[-7].number),
                                               (yyvsp[-6].anchored_string).name, (yyvsp[-3].argument),
                                               &(yyvsp[-1].number), &(yyvsp[0].node),
                                               (yyvsp[-6].anchored_string).anchor); }
-#line 2628 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2628 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 23: /* def: type name_list ';'  */
-#line 439 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 439 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   {
                                     if (!((yyvsp[-2].number) & ~(DECL_MODS)) && (pragmas & PRAGMA_STRICT_TYPES))
                                       yyerror("Missing type for global variable declaration");
                                     (yyval.node) = 0;
                                   }
-#line 2638 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2638 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 27: /* modifier_change: type_modifier_list ':'  */
-#line 451 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 451 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   {
                                     if (!(yyvsp[-1].number))
                                       yyerror("modifier list may not be empty.");
@@ -2652,11 +2652,11 @@ yyreduce:
                                     global_modifiers = (yyvsp[-1].number);
                                     (yyval.node) = 0;
                                   }
-#line 2656 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2656 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 28: /* member_name: optional_star anchored_identifier  */
-#line 468 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 468 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                   {
                                     auto member_location =
                                         query_diagnostic_anchor((yyvsp[0].anchored_string).anchor);
@@ -2677,41 +2677,41 @@ yyreduce:
                                     pop_diagnostic_anchor((yyvsp[0].anchored_string).anchor);
                                     scratch_free((yyvsp[0].anchored_string).name);
                                   }
-#line 2681 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2681 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 32: /* $@3: %empty  */
-#line 497 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 497 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                            { current_type = (yyvsp[0].number); }
-#line 2687 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2687 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 34: /* @4: %empty  */
-#line 503 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 503 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             { (yyvsp[-2].ihe) = rule_define_class(&(yyval.number), (yyvsp[-1].anchored_string).name,
                                                                           (yyvsp[-1].anchored_string).anchor); }
-#line 2694 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2694 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 35: /* type_decl: type_modifier_list L_CLASS anchored_identifier '{' @4 member_list '}'  */
-#line 506 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 506 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             { rule_define_class_members((yyvsp[-5].ihe), (yyvsp[-2].number),
                                                                         (yyvsp[-4].anchored_string).anchor); (yyval.node) = 0; }
-#line 2701 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2701 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 36: /* new_local_name: L_IDENTIFIER  */
-#line 512 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 512 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               (yyval.anchored_string).name = (yyvsp[0].string);
                                               (yyval.anchored_string).anchor =
                                                   push_diagnostic_anchor(query_last_non_eof_token_location());
                                             }
-#line 2711 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2711 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 37: /* new_local_name: L_DEFINED_NAME  */
-#line 518 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 518 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               if ((yyvsp[0].ihe)->dn.local_num != -1) {
                                                 auto declaration_override =
@@ -2725,11 +2725,11 @@ yyreduce:
                                               (yyval.anchored_string).anchor =
                                                   push_diagnostic_anchor(query_last_non_eof_token_location());
                                             }
-#line 2729 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2729 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 39: /* atomic_type: L_CLASS L_DEFINED_NAME  */
-#line 536 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 536 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               if ((yyvsp[0].ihe)->dn.class_num == -1) {
                                                 auto declaration_override =
@@ -2743,11 +2743,11 @@ yyreduce:
                                                 (yyval.number) = (yyvsp[0].ihe)->dn.class_num | TYPE_MOD_CLASS;
                                               }
                                             }
-#line 2747 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2747 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 40: /* atomic_type: L_CLASS L_IDENTIFIER  */
-#line 550 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 550 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                             {
                                               auto declaration_override =
                                                   push_named_diagnostic_override((yyvsp[0].string));
@@ -2757,35 +2757,35 @@ yyreduce:
                                               }
                                               (yyval.number) = TYPE_ANY;
                                             }
-#line 2761 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2761 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 42: /* opt_atomic_type: %empty  */
-#line 563 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 563 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                         { (yyval.number) = TYPE_ANY; }
-#line 2767 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2767 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 44: /* basic_type: opt_atomic_type L_ARRAY  */
-#line 568 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 568 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                             { (yyval.number) = (yyvsp[-1].number) | TYPE_MOD_ARRAY; }
-#line 2773 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2773 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 46: /* arg_type: basic_type ref  */
-#line 573 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 573 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                    { (yyval.number) = (yyvsp[-1].number) | LOCAL_MOD_REF; }
-#line 2779 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2779 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 47: /* optional_default_arg_value: %empty  */
-#line 577 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 577 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
          { (yyval.node) = 0; }
-#line 2785 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2785 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 48: /* optional_default_arg_value: ':' L_FUNCTION_OPEN comma_expr ':' ')'  */
-#line 578 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 578 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                           {
     if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != ':') {
@@ -2805,21 +2805,21 @@ yyreduce:
     (yyval.node)->v.number = FP_FUNCTIONAL + 0 /* args */;
     pop_function_context();
 }
-#line 2809 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2809 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 49: /* new_arg: arg_type optional_star  */
-#line 600 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 600 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                               {
                                                 (yyval.number) = (yyvsp[-1].number) | (yyvsp[0].number);
                                                 if ((yyvsp[-1].number) != TYPE_VOID)
                                                   add_local_name("", (yyvsp[-1].number) | (yyvsp[0].number));
                                               }
-#line 2819 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2819 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 50: /* new_arg: arg_type optional_star new_local_name optional_default_arg_value  */
-#line 606 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 606 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                               {
                                                 auto declaration_override =
                                                     push_declaration_diagnostic_override((yyvsp[-1].anchored_string).anchor, (yyvsp[-1].anchored_string).name);
@@ -2833,11 +2833,11 @@ yyreduce:
                                                 scratch_free((yyvsp[-1].anchored_string).name);
                                                 (yyval.number) = (yyvsp[-3].number) | (yyvsp[-2].number);
                                               }
-#line 2837 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2837 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 51: /* new_arg: new_local_name  */
-#line 620 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 620 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
                                               {
                                                 auto declaration_override =
                                                     push_declaration_diagnostic_override((yyvsp[0].anchored_string).anchor, (yyvsp[0].anchored_string).name);
@@ -2851,20 +2851,20 @@ yyreduce:
                                                 scratch_free((yyvsp[0].anchored_string).name);
                                                 (yyval.number) = TYPE_ANY;
                                               }
-#line 2855 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2855 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 52: /* argument: %empty  */
-#line 637 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 637 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.argument).num_arg = 0;
       (yyval.argument).flags = 0;
     }
-#line 2864 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2864 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 54: /* argument: argument_list L_DOT_DOT_DOT  */
-#line 643 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 643 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int x = type_of_locals_ptr[max_num_locals-1];
       int lt = x & ~LOCAL_MODS;
@@ -2879,11 +2879,11 @@ yyreduce:
       if (lt != TYPE_ANY && !(lt & TYPE_MOD_ARRAY))
         yywarn("Variable to hold remainder of arguments should be an array.");
     }
-#line 2883 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2883 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 55: /* argument_list: new_arg  */
-#line 661 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 661 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (((yyvsp[0].number) & TYPE_MASK) == TYPE_VOID && !((yyvsp[0].number) & TYPE_MOD_CLASS)) {
         if ((yyvsp[0].number) & ~TYPE_MASK)
@@ -2894,11 +2894,11 @@ yyreduce:
       }
       (yyval.argument).flags = 0;
     }
-#line 2898 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2898 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 56: /* argument_list: argument_list ',' new_arg  */
-#line 672 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 672 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (!(yyval.argument).num_arg)    /* first arg was void w/no name */
         yyerror("argument of type void must be the only argument.");
@@ -2908,19 +2908,19 @@ yyreduce:
       (yyval.argument) = (yyvsp[-2].argument);
       (yyval.argument).num_arg++;
     }
-#line 2912 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2912 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 57: /* type_modifier_list: %empty  */
-#line 685 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 685 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.number) = 0;
     }
-#line 2920 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2920 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 58: /* type_modifier_list: L_TYPE_MODIFIER type_modifier_list  */
-#line 689 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 689 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-1].number) | (yyvsp[0].number);
       int acc_mod = (yyval.number) & DECL_ACCESS;
@@ -2934,36 +2934,36 @@ yyreduce:
       }
 #endif
     }
-#line 2938 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2938 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 59: /* type: type_modifier_list opt_basic_type  */
-#line 706 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 706 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = ((yyvsp[-1].number) << 16) | (yyvsp[0].number);
       current_type = (yyval.number);
     }
-#line 2947 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2947 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 60: /* cast: '(' basic_type optional_star ')'  */
-#line 714 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 714 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) | (yyvsp[-1].number);
     }
-#line 2955 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2955 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 62: /* opt_basic_type: %empty  */
-#line 722 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 722 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.number) = TYPE_UNKNOWN;
     }
-#line 2963 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 2963 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 65: /* new_name: optional_star anchored_identifier  */
-#line 734 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 734 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       auto declaration_location = query_diagnostic_anchor((yyvsp[0].anchored_string).anchor);
       auto declaration_override =
@@ -2997,11 +2997,11 @@ yyreduce:
       pop_diagnostic_anchor((yyvsp[0].anchored_string).anchor);
       scratch_free((yyvsp[0].anchored_string).name);
     }
-#line 3001 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3001 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 66: /* new_name: optional_star anchored_identifier L_ASSIGN expr0  */
-#line 768 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 768 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *expr, *newnode;
       int type;
@@ -3062,57 +3062,57 @@ yyreduce:
       pop_diagnostic_anchor((yyvsp[-2].anchored_string).anchor);
       scratch_free((yyvsp[-2].anchored_string).name);
     }
-#line 3066 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3066 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 67: /* @5: %empty  */
-#line 832 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 832 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     { (yyval.number) = current_number_of_locals; }
-#line 3072 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3072 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 68: /* block: '{' @5 block_statements '}'  */
-#line 834 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 834 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[-1].decl).node;
       (yyval.decl).num = current_number_of_locals - (yyvsp[-2].number);  /* calculate locals declared in this block */
     }
-#line 3081 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3081 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 72: /* local_declarations: %empty  */
-#line 844 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 844 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.decl).node = 0;
       (yyval.decl).num = 0;
     }
-#line 3090 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3090 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 73: /* $@6: %empty  */
-#line 849 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 849 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       /* can't do this in basic_type b/c local_name_list contains
        * expr0 which contains cast which contains basic_type
        */
       current_type = (yyvsp[0].number);
     }
-#line 3101 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3101 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 74: /* local_declarations: local_declarations basic_type $@6 local_name_list ';'  */
-#line 856 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 856 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-4].decl).node && (yyvsp[-1].decl).node) {
         CREATE_STATEMENTS((yyval.decl).node, (yyvsp[-4].decl).node, (yyvsp[-1].decl).node);
       } else (yyval.decl).node = ((yyvsp[-4].decl).node ? (yyvsp[-4].decl).node : (yyvsp[-1].decl).node);
       (yyval.decl).num = (yyvsp[-4].decl).num + (yyvsp[-1].decl).num;
     }
-#line 3112 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3112 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 75: /* new_local_def: optional_star new_local_name  */
-#line 866 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 866 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       auto declaration_override =
           push_declaration_diagnostic_override((yyvsp[0].anchored_string).anchor, (yyvsp[0].anchored_string).name);
@@ -3134,11 +3134,11 @@ yyreduce:
       scratch_free((yyvsp[0].anchored_string).name);
       (yyval.node) = 0;
     }
-#line 3138 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3138 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 76: /* new_local_def: optional_star new_local_name L_ASSIGN expr0  */
-#line 888 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 888 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       auto declaration_override =
           push_declaration_diagnostic_override((yyvsp[-2].anchored_string).anchor, (yyvsp[-2].anchored_string).name);
@@ -3181,11 +3181,11 @@ yyreduce:
       }
       scratch_free((yyvsp[-2].anchored_string).name);
     }
-#line 3185 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3185 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 77: /* single_new_local_def: arg_type optional_star new_local_name  */
-#line 934 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 934 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       auto declaration_override =
           push_declaration_diagnostic_override((yyvsp[0].anchored_string).anchor, (yyvsp[0].anchored_string).name);
@@ -3201,11 +3201,11 @@ yyreduce:
       }
       scratch_free((yyvsp[0].anchored_string).name);
     }
-#line 3205 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3205 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 78: /* single_new_local_def_with_init: single_new_local_def L_ASSIGN expr0  */
-#line 953 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 953 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int type = type_of_locals_ptr[(yyvsp[-2].number)];
       auto declaration_override =
@@ -3241,88 +3241,88 @@ yyreduce:
         pop_diagnostic_override(declaration_override);
       }
     }
-#line 3245 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3245 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 79: /* local_name_list: new_local_def  */
-#line 992 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 992 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[0].node);
       (yyval.decl).num = 1;
     }
-#line 3254 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3254 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 80: /* local_name_list: new_local_def ',' local_name_list  */
-#line 997 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 997 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-2].node) && (yyvsp[0].decl).node) {
         CREATE_STATEMENTS((yyval.decl).node, (yyvsp[-2].node), (yyvsp[0].decl).node);
       } else (yyval.decl).node = ((yyvsp[-2].node) ? (yyvsp[-2].node) : (yyvsp[0].decl).node);
       (yyval.decl).num = 1 + (yyvsp[0].decl).num;
     }
-#line 3265 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3265 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 81: /* $@7: %empty  */
-#line 1007 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1007 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       current_type = (yyvsp[0].number);
     }
-#line 3273 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3273 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 82: /* local_declaration_statement: basic_type $@7 local_name_list ';'  */
-#line 1011 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1011 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[-1].decl).node;
       (yyval.decl).num = (yyvsp[-1].decl).num;
     }
-#line 3282 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3282 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 83: /* block_statements: %empty  */
-#line 1019 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1019 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.decl).node = 0;
       (yyval.decl).num = 0;
     }
-#line 3291 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3291 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 84: /* block_statements: statement block_statements  */
-#line 1024 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1024 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-1].node) && (yyvsp[0].decl).node) {
         CREATE_STATEMENTS((yyval.decl).node, (yyvsp[-1].node), (yyvsp[0].decl).node);
       } else (yyval.decl).node = ((yyvsp[-1].node) ? (yyvsp[-1].node) : (yyvsp[0].decl).node);
       (yyval.decl).num = (yyvsp[0].decl).num;
     }
-#line 3302 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3302 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 85: /* block_statements: local_declaration_statement block_statements  */
-#line 1031 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1031 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-1].decl).node && (yyvsp[0].decl).node) {
         CREATE_STATEMENTS((yyval.decl).node, (yyvsp[-1].decl).node, (yyvsp[0].decl).node);
       } else (yyval.decl).node = ((yyvsp[-1].decl).node ? (yyvsp[-1].decl).node : (yyvsp[0].decl).node);
       (yyval.decl).num = (yyvsp[-1].decl).num + (yyvsp[0].decl).num;
     }
-#line 3313 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3313 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 86: /* block_statements: error ';' block_statements  */
-#line 1038 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1038 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[0].decl).node;
       (yyval.decl).num = (yyvsp[0].decl).num;
     }
-#line 3322 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3322 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 87: /* statement: comma_expr ';'  */
-#line 1046 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1046 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = pop_value((yyvsp[-1].node));
 #ifdef DEBUG
@@ -3334,28 +3334,28 @@ yyreduce:
       }
 #endif
     }
-#line 3338 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3338 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 93: /* statement: decl_block  */
-#line 1063 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1063 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].decl).node;
       pop_n_locals((yyvsp[0].decl).num);
     }
-#line 3347 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3347 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 94: /* statement: ';'  */
-#line 1068 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1068 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = 0;
     }
-#line 3355 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3355 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 95: /* statement: L_BREAK ';'  */
-#line 1072 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1072 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (context & SPECIAL_CONTEXT) {
         yyerror("Cannot break out of catch { } or time_expression { }");
@@ -3377,11 +3377,11 @@ yyreduce:
             (yyval.node) = 0;
           }
     }
-#line 3381 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3381 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 96: /* statement: L_CONTINUE ';'  */
-#line 1094 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1094 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (context & SPECIAL_CONTEXT)
         yyerror("Cannot continue out of catch { } or time_expression { }");
@@ -3390,57 +3390,57 @@ yyreduce:
           yyerror("continue statement outside loop");
       CREATE_CONTROL_JUMP((yyval.node), CJ_CONTINUE);
     }
-#line 3394 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3394 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 97: /* $@8: %empty  */
-#line 1106 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1106 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[-3].number) = context;
       context = LOOP_CONTEXT;
     }
-#line 3403 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3403 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 98: /* while: L_WHILE '(' comma_expr ')' $@8 statement  */
-#line 1111 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1111 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_LOOP((yyval.node), 1, (yyvsp[0].node), 0, optimize_loop_test((yyvsp[-3].node)));
       context = (yyvsp[-5].number);
     }
-#line 3412 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3412 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 99: /* $@9: %empty  */
-#line 1119 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1119 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[0].number) = context;
       context = LOOP_CONTEXT;
     }
-#line 3421 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3421 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 100: /* do: L_DO $@9 statement L_WHILE '(' comma_expr ')' ';'  */
-#line 1124 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1124 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_LOOP((yyval.node), 0, (yyvsp[-5].node), 0, optimize_loop_test((yyvsp[-2].node)));
       context = (yyvsp[-7].number);
     }
-#line 3430 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3430 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 101: /* $@10: %empty  */
-#line 1132 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1132 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[-5].decl).node = pop_value((yyvsp[-5].decl).node);
       (yyvsp[-7].number) = context;
       context = LOOP_CONTEXT;
     }
-#line 3440 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3440 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 102: /* for: L_FOR '(' first_for_expr ';' for_expr ';' for_expr ')' $@10 statement  */
-#line 1138 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1138 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).num = (yyvsp[-7].decl).num; /* number of declarations (0/1) */
 
@@ -3456,11 +3456,11 @@ yyreduce:
 
       context = (yyvsp[-9].number);
     }
-#line 3460 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3460 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 103: /* foreach_var: L_DEFINED_NAME  */
-#line 1157 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1157 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].ihe)->dn.local_num != -1) {
         CREATE_OPCODE_1((yyval.decl).node, F_LOCAL_LVALUE, 0, (yyvsp[0].ihe)->dn.local_num);
@@ -3481,11 +3481,11 @@ yyreduce:
         }
       (yyval.decl).num = 0;
     }
-#line 3485 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3485 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 104: /* foreach_var: single_new_local_def  */
-#line 1178 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1178 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (type_of_locals_ptr[(yyvsp[0].number)] & LOCAL_MOD_REF) {
         CREATE_OPCODE_1((yyval.decl).node, F_REF_LVALUE, 0, (yyvsp[0].number));
@@ -3495,11 +3495,11 @@ yyreduce:
       }
       (yyval.decl).num = 1;
     }
-#line 3499 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3499 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 105: /* foreach_var: L_IDENTIFIER  */
-#line 1188 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1188 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       char buf[256];
       char *end = EndOf(buf);
@@ -3513,41 +3513,41 @@ yyreduce:
       scratch_free((yyvsp[0].string));
       (yyval.decl).num = 0;
     }
-#line 3517 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3517 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 106: /* foreach_vars: foreach_var  */
-#line 1205 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1205 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_FOREACH((yyval.decl).node, (yyvsp[0].decl).node, 0);
       (yyval.decl).num = (yyvsp[0].decl).num;
     }
-#line 3526 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3526 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 107: /* foreach_vars: foreach_var ',' foreach_var  */
-#line 1210 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1210 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_FOREACH((yyval.decl).node, (yyvsp[-2].decl).node, (yyvsp[0].decl).node);
       (yyval.decl).num = (yyvsp[-2].decl).num + (yyvsp[0].decl).num;
       if ((yyvsp[-2].decl).node->v.number == F_REF_LVALUE)
         yyerror("Mapping key may not be a reference in foreach()");
     }
-#line 3537 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3537 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 108: /* $@11: %empty  */
-#line 1220 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1220 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[-3].decl).node->v.expr = (yyvsp[-1].node);
       (yyvsp[-5].number) = context;
       context = LOOP_CONTEXT | LOOP_FOREACH;
     }
-#line 3547 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3547 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 109: /* foreach: L_FOREACH '(' foreach_vars L_IN expr0 ')' $@11 statement  */
-#line 1226 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1226 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).num = (yyvsp[-5].decl).num;
 
@@ -3557,48 +3557,48 @@ yyreduce:
 
       context = (yyvsp[-7].number);
     }
-#line 3561 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3561 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 110: /* for_expr: %empty  */
-#line 1239 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1239 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.node) = 0;
     }
-#line 3569 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3569 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 112: /* first_for_expr: for_expr  */
-#line 1247 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1247 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[0].node);
       (yyval.decl).num = 0;
     }
-#line 3578 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3578 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 113: /* first_for_expr: single_new_local_def_with_init  */
-#line 1252 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1252 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.decl).node = (yyvsp[0].node);
       (yyval.decl).num = 1;
     }
-#line 3587 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3587 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 114: /* $@12: %empty  */
-#line 1260 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1260 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[-3].number) = context;
       context &= LOOP_CONTEXT;
       context |= SWITCH_CONTEXT;
       (yyvsp[-2].number) = mem_block[A_CASES].current_size;
     }
-#line 3598 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3598 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 115: /* switch: L_SWITCH '(' comma_expr ')' $@12 '{' local_declarations case switch_block '}'  */
-#line 1267 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1267 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
       {
         parse_node_t *node1, *node2;
 
@@ -3627,50 +3627,50 @@ yyreduce:
         (yyval.node) = node2;
         pop_n_locals((yyvsp[-3].decl).num);
       }
-#line 3631 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3631 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 116: /* switch_block: case switch_block  */
-#line 1299 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1299 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].node)){
         CREATE_STATEMENTS((yyval.node), (yyvsp[-1].node), (yyvsp[0].node));
       } else (yyval.node) = (yyvsp[-1].node);
     }
-#line 3641 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3641 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 117: /* switch_block: statement switch_block  */
-#line 1305 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1305 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].node)){
         CREATE_STATEMENTS((yyval.node), (yyvsp[-1].node), (yyvsp[0].node));
       } else (yyval.node) = (yyvsp[-1].node);
     }
-#line 3651 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3651 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 118: /* switch_block: %empty  */
-#line 1311 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1311 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.node) = 0;
     }
-#line 3659 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3659 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 119: /* case: L_CASE case_label ':'  */
-#line 1318 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1318 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[-1].node);
       (yyval.node)->v.expr = 0;
 
       add_to_mem_block(A_CASES, (char *)&((yyvsp[-1].node)), sizeof((yyvsp[-1].node)));
     }
-#line 3670 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3670 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 120: /* case: L_CASE case_label L_RANGE case_label ':'  */
-#line 1325 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1325 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ( (yyvsp[-3].node)->kind != NODE_CASE_NUMBER
           || (yyvsp[-1].node)->kind != NODE_CASE_NUMBER )
@@ -3684,11 +3684,11 @@ yyreduce:
 
       add_to_mem_block(A_CASES, (char *)&((yyvsp[-3].node)), sizeof((yyvsp[-3].node)));
     }
-#line 3688 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3688 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 121: /* case: L_CASE case_label L_RANGE ':'  */
-#line 1339 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1339 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ( (yyvsp[-2].node)->kind != NODE_CASE_NUMBER )
         yyerror("String case labels not allowed as range bounds");
@@ -3702,11 +3702,11 @@ yyreduce:
 
       add_to_mem_block(A_CASES, (char *)&((yyvsp[-2].node)), sizeof((yyvsp[-2].node)));
     }
-#line 3706 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3706 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 122: /* case: L_CASE L_RANGE case_label ':'  */
-#line 1353 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1353 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ( (yyvsp[-1].node)->kind != NODE_CASE_NUMBER )
         yyerror("String case labels not allowed as range bounds");
@@ -3719,11 +3719,11 @@ yyreduce:
 
       add_to_mem_block(A_CASES, (char *)&((yyval.node)), sizeof((yyval.node)));
     }
-#line 3723 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3723 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 123: /* case: L_DEFAULT ':'  */
-#line 1366 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1366 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (context & SWITCH_DEFAULT) {
         yyerror("Duplicate default");
@@ -3736,11 +3736,11 @@ yyreduce:
       add_to_mem_block(A_CASES, (char *)&((yyval.node)), sizeof((yyval.node)));
       context |= SWITCH_DEFAULT;
     }
-#line 3740 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3740 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 124: /* case_label: constant  */
-#line 1382 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1382 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((context & SWITCH_STRINGS) && (yyvsp[0].number))
         yyerror("Mixed case label list not allowed");
@@ -3754,11 +3754,11 @@ yyreduce:
       (yyval.node)->kind = NODE_CASE_NUMBER;
       (yyval.node)->r.number = (LPC_INT)(yyvsp[0].number);
     }
-#line 3758 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3758 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 125: /* case_label: string_con1  */
-#line 1396 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1396 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       POINTER_INT str;
       str = store_prog_string((yyvsp[0].string));
@@ -3770,51 +3770,51 @@ yyreduce:
       (yyval.node)->kind = NODE_CASE_STRING;
       (yyval.node)->r.number = (LPC_INT)str;
     }
-#line 3774 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3774 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 126: /* constant: constant '|' constant  */
-#line 1411 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1411 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) | (yyvsp[0].number);
     }
-#line 3782 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3782 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 127: /* constant: constant '^' constant  */
-#line 1415 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1415 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) ^ (yyvsp[0].number);
     }
-#line 3790 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3790 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 128: /* constant: constant '&' constant  */
-#line 1419 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1419 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) & (yyvsp[0].number);
     }
-#line 3798 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3798 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 129: /* constant: constant L_EQ constant  */
-#line 1423 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1423 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) == (yyvsp[0].number);
     }
-#line 3806 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3806 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 130: /* constant: constant L_NE constant  */
-#line 1427 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1427 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) != (yyvsp[0].number);
     }
-#line 3814 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3814 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 131: /* constant: constant L_ORDER constant  */
-#line 1431 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1431 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       switch((yyvsp[-1].number)){
         case F_GE: (yyval.number) = (yyvsp[-2].number) >= (yyvsp[0].number); break;
@@ -3822,131 +3822,131 @@ yyreduce:
         case F_GT: (yyval.number) = (yyvsp[-2].number) >  (yyvsp[0].number); break;
       }
     }
-#line 3826 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3826 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 132: /* constant: constant '<' constant  */
-#line 1439 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1439 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) < (yyvsp[0].number);
     }
-#line 3834 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3834 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 133: /* constant: constant L_LSH constant  */
-#line 1443 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1443 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) << (yyvsp[0].number);
     }
-#line 3842 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3842 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 134: /* constant: constant L_RSH constant  */
-#line 1447 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1447 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) >> (yyvsp[0].number);
     }
-#line 3850 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3850 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 135: /* constant: constant '+' constant  */
-#line 1451 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1451 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) + (yyvsp[0].number);
     }
-#line 3858 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3858 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 136: /* constant: constant '-' constant  */
-#line 1455 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1455 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) - (yyvsp[0].number);
     }
-#line 3866 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3866 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 137: /* constant: constant '*' constant  */
-#line 1459 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1459 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-2].number) * (yyvsp[0].number);
     }
-#line 3874 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3874 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 138: /* constant: constant '%' constant  */
-#line 1463 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1463 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].number)) (yyval.number) = (yyvsp[-2].number) % (yyvsp[0].number); else yyerror("Modulo by zero");
     }
-#line 3882 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3882 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 139: /* constant: constant '/' constant  */
-#line 1467 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1467 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].number)) (yyval.number) = (yyvsp[-2].number) / (yyvsp[0].number); else yyerror("Division by zero");
     }
-#line 3890 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3890 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 140: /* constant: '(' constant ')'  */
-#line 1471 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1471 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[-1].number);
     }
-#line 3898 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3898 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 141: /* constant: L_NUMBER  */
-#line 1475 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1475 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = (yyvsp[0].number);
     }
-#line 3906 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3906 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 142: /* constant: '-' L_NUMBER  */
-#line 1479 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1479 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = -(yyvsp[0].number);
     }
-#line 3914 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3914 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 143: /* constant: L_NOT L_NUMBER  */
-#line 1483 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1483 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = !(yyvsp[0].number);
     }
-#line 3922 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3922 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 144: /* constant: '~' L_NUMBER  */
-#line 1487 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1487 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = ~(yyvsp[0].number);
     }
-#line 3930 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3930 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 145: /* comma_expr: expr0  */
-#line 1494 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1494 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].node);
     }
-#line 3938 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3938 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 146: /* comma_expr: comma_expr ',' expr0  */
-#line 1498 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1498 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_TWO_VALUES((yyval.node), (yyvsp[0].node)->type, pop_value((yyvsp[-2].node)), (yyvsp[0].node));
     }
-#line 3946 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3946 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 148: /* expr0: ref lvalue  */
-#line 1509 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1509 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int op;
 
@@ -3973,11 +3973,11 @@ yyreduce:
       }
       CREATE_UNARY_OP_1((yyval.node), F_MAKE_REF, TYPE_ANY, (yyvsp[0].node), op);
     }
-#line 3977 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 3977 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 149: /* expr0: lvalue L_ASSIGN expr0  */
-#line 1536 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1536 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *l = (yyvsp[-2].node), *r = (yyvsp[0].node);
       int opcode = (yyvsp[-1].number);
@@ -4018,20 +4018,20 @@ yyreduce:
           (yyval.node)->l.expr = do_promotions(r, l->type);
       }
     }
-#line 4022 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4022 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 150: /* expr0: error L_ASSIGN expr0  */
-#line 1577 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1577 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       yyerror("Illegal LHS");
       CREATE_ERROR((yyval.node));
     }
-#line 4031 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4031 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 151: /* expr0: expr0 '?' expr0 ':' expr0  */
-#line 1582 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1582 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *p1 = (yyvsp[-2].node), *p2 = (yyvsp[0].node);
 
@@ -4055,41 +4055,41 @@ yyreduce:
       }
       (yyval.node)->type = ((p1->type == p2->type) ? p1->type : TYPE_ANY);
     }
-#line 4059 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4059 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 152: /* expr0: expr0 L_QUESTION_QUESTION expr0  */
-#line 1606 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1606 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       /* Nullish coalescing: left ?? right
        * Return left if defined, otherwise return right */
       CREATE_NULLISH((yyval.node), (yyvsp[-2].node), (yyvsp[0].node));
     }
-#line 4069 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4069 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 153: /* expr0: expr0 L_LOR expr0  */
-#line 1612 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1612 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_LAND_LOR((yyval.node), F_LOR, (yyvsp[-2].node), (yyvsp[0].node));
       if (IS_NODE((yyvsp[-2].node), NODE_LAND_LOR, F_LOR))
         (yyvsp[-2].node)->kind = NODE_BRANCH_LINK;
     }
-#line 4079 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4079 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 154: /* expr0: expr0 L_LAND expr0  */
-#line 1618 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1618 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_LAND_LOR((yyval.node), F_LAND, (yyvsp[-2].node), (yyvsp[0].node));
       if (IS_NODE((yyvsp[-2].node), NODE_LAND_LOR, F_LAND))
         (yyvsp[-2].node)->kind = NODE_BRANCH_LINK;
     }
-#line 4089 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4089 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 155: /* expr0: expr0 '|' expr0  */
-#line 1624 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1624 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int t1 = (yyvsp[-2].node)->type, t3 = (yyvsp[0].node)->type;
 
@@ -4114,19 +4114,19 @@ yyreduce:
       }
       else (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_OR, "|");
     }
-#line 4118 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4118 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 156: /* expr0: expr0 '^' expr0  */
-#line 1649 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1649 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_XOR, "^");
     }
-#line 4126 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4126 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 157: /* expr0: expr0 '&' expr0  */
-#line 1653 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1653 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int t1 = (yyvsp[-2].node)->type, t3 = (yyvsp[0].node)->type;
       if (is_boolean((yyvsp[-2].node)) && is_boolean((yyvsp[0].node)))
@@ -4149,11 +4149,11 @@ yyreduce:
         CREATE_BINARY_OP((yyval.node), F_AND, t1, (yyvsp[-2].node), (yyvsp[0].node));
       } else (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_AND, "&");
     }
-#line 4153 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4153 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 158: /* expr0: expr0 L_EQ expr0  */
-#line 1676 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1676 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types && !compatible_types2((yyvsp[-2].node)->type, (yyvsp[0].node)->type)){
         char buf[256];
@@ -4175,11 +4175,11 @@ yyreduce:
           CREATE_BINARY_OP((yyval.node), F_EQ, TYPE_NUMBER, (yyvsp[-2].node), (yyvsp[0].node));
         }
     }
-#line 4179 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4179 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 159: /* expr0: expr0 L_NE expr0  */
-#line 1698 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1698 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types && !compatible_types2((yyvsp[-2].node)->type, (yyvsp[0].node)->type)){
         char buf[256];
@@ -4193,11 +4193,11 @@ yyreduce:
       }
       CREATE_BINARY_OP((yyval.node), F_NE, TYPE_NUMBER, (yyvsp[-2].node), (yyvsp[0].node));
     }
-#line 4197 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4197 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 160: /* expr0: expr0 L_ORDER expr0  */
-#line 1712 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1712 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types) {
         int t1 = (yyvsp[-2].node)->type;
@@ -4241,11 +4241,11 @@ yyreduce:
       }
       CREATE_BINARY_OP((yyval.node), (yyvsp[-1].number), TYPE_NUMBER, (yyvsp[-2].node), (yyvsp[0].node));
     }
-#line 4245 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4245 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 161: /* expr0: expr0 '<' expr0  */
-#line 1756 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1756 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types) {
         int t1 = (yyvsp[-2].node)->type, t3 = (yyvsp[0].node)->type;
@@ -4282,27 +4282,27 @@ yyreduce:
       }
       CREATE_BINARY_OP((yyval.node), F_LT, TYPE_NUMBER, (yyvsp[-2].node), (yyvsp[0].node));
     }
-#line 4286 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4286 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 162: /* expr0: expr0 L_LSH expr0  */
-#line 1793 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1793 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_LSH, "<<");
     }
-#line 4294 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4294 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 163: /* expr0: expr0 L_RSH expr0  */
-#line 1797 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1797 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_RSH, ">>");
     }
-#line 4302 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4302 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 164: /* expr0: expr0 '+' expr0  */
-#line 1801 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1801 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int result_type;
 
@@ -4472,11 +4472,11 @@ yyreduce:
           break;
       }
     }
-#line 4476 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4476 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 165: /* expr0: expr0 '-' expr0  */
-#line 1971 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 1971 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int result_type;
 
@@ -4570,11 +4570,11 @@ yyreduce:
           CREATE_BINARY_OP((yyval.node), F_SUBTRACT, result_type, (yyvsp[-2].node), (yyvsp[0].node));
       }
     }
-#line 4574 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4574 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 166: /* expr0: expr0 '*' expr0  */
-#line 2065 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2065 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int result_type;
 
@@ -4654,19 +4654,19 @@ yyreduce:
           CREATE_BINARY_OP((yyval.node), F_MULTIPLY, result_type, (yyvsp[-2].node), (yyvsp[0].node));
       }
     }
-#line 4658 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4658 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 167: /* expr0: expr0 '%' expr0  */
-#line 2145 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2145 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = binary_int_op((yyvsp[-2].node), (yyvsp[0].node), F_MOD, "%");
     }
-#line 4666 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4666 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 168: /* expr0: expr0 '/' expr0  */
-#line 2149 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2149 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int result_type;
 
@@ -4761,11 +4761,11 @@ yyreduce:
           CREATE_BINARY_OP((yyval.node), F_DIVIDE, result_type, (yyvsp[-2].node), (yyvsp[0].node));
       }
     }
-#line 4765 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4765 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 169: /* expr0: cast expr0  */
-#line 2244 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2244 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].node);
       (yyval.node)->type = (yyvsp[-1].number);
@@ -4786,11 +4786,11 @@ yyreduce:
         yyerror(buf);
       }
     }
-#line 4790 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4790 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 170: /* expr0: L_INC lvalue  */
-#line 2265 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2265 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_UNARY_OP((yyval.node), F_PRE_INC, 0, (yyvsp[0].node));
       if (exact_types){
@@ -4811,11 +4811,11 @@ yyreduce:
         }
       } else (yyval.node)->type = TYPE_ANY;
     }
-#line 4815 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4815 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 171: /* expr0: L_DEC lvalue  */
-#line 2286 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2286 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_UNARY_OP((yyval.node), F_PRE_DEC, 0, (yyvsp[0].node));
       if (exact_types){
@@ -4837,11 +4837,11 @@ yyreduce:
       } else (yyval.node)->type = TYPE_ANY;
 
     }
-#line 4841 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4841 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 172: /* expr0: L_NOT expr0  */
-#line 2308 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2308 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[0].node)->kind == NODE_NUMBER) {
         (yyval.node) = (yyvsp[0].node);
@@ -4850,11 +4850,11 @@ yyreduce:
         CREATE_UNARY_OP((yyval.node), F_NOT, TYPE_NUMBER, (yyvsp[0].node));
       }
     }
-#line 4854 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4854 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 173: /* expr0: '~' expr0  */
-#line 2317 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2317 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types && !IS_TYPE((yyvsp[0].node)->type, TYPE_NUMBER))
         type_error("Bad argument to ~", (yyvsp[0].node)->type);
@@ -4865,11 +4865,11 @@ yyreduce:
         CREATE_UNARY_OP((yyval.node), F_COMPL, TYPE_NUMBER, (yyvsp[0].node));
       }
     }
-#line 4869 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4869 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 174: /* expr0: '-' expr0  */
-#line 2328 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2328 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int result_type;
       if (exact_types){
@@ -4893,11 +4893,11 @@ yyreduce:
           CREATE_UNARY_OP((yyval.node), F_NEGATE, result_type, (yyvsp[0].node));
       }
     }
-#line 4897 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4897 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 175: /* expr0: lvalue L_INC  */
-#line 2352 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2352 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_UNARY_OP((yyval.node), F_POST_INC, 0, (yyvsp[-1].node));
       (yyval.node)->v.number = F_POST_INC;
@@ -4919,11 +4919,11 @@ yyreduce:
         }
       } else (yyval.node)->type = TYPE_ANY;
     }
-#line 4923 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4923 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 176: /* expr0: lvalue L_DEC  */
-#line 2374 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2374 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_UNARY_OP((yyval.node), F_POST_DEC, 0, (yyvsp[-1].node));
       if (exact_types){
@@ -4944,21 +4944,21 @@ yyreduce:
         }
       } else (yyval.node)->type = TYPE_ANY;
     }
-#line 4948 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4948 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 183: /* return: L_RETURN ';'  */
-#line 2404 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2404 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types && !IS_TYPE(exact_types, TYPE_VOID))
         yywarn("Non-void functions must return a value.");
       CREATE_RETURN((yyval.node), 0);
     }
-#line 4958 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4958 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 184: /* return: L_RETURN comma_expr ';'  */
-#line 2410 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2410 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (exact_types && !compatible_types((yyvsp[-1].node)->type, exact_types)) {
         char buf[256];
@@ -4975,62 +4975,62 @@ yyreduce:
         CREATE_RETURN((yyval.node), (yyvsp[-1].node));
       }
     }
-#line 4979 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4979 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 185: /* expr_list: %empty  */
-#line 2430 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2430 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       CREATE_EXPR_LIST((yyval.node), 0);
     }
-#line 4987 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4987 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 186: /* expr_list: expr_list2  */
-#line 2434 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2434 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_LIST((yyval.node), (yyvsp[0].node));
     }
-#line 4995 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 4995 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 187: /* expr_list: expr_list2 ','  */
-#line 2438 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2438 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_LIST((yyval.node), (yyvsp[-1].node));
     }
-#line 5003 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5003 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 188: /* expr_list_node: expr0  */
-#line 2445 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2445 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_NODE((yyval.node), (yyvsp[0].node), 0);
       remember_parse_node_diagnostic_location((yyval.node), capture_argument_diagnostic_location());
     }
-#line 5012 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5012 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 189: /* expr_list_node: expr0 L_DOT_DOT_DOT  */
-#line 2450 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2450 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_NODE((yyval.node), (yyvsp[-1].node), 1);
       remember_parse_node_diagnostic_location((yyval.node), capture_argument_diagnostic_location());
     }
-#line 5021 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5021 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 190: /* expr_list2: expr_list_node  */
-#line 2458 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2458 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[0].node)->kind = 1;
       (yyval.node) = (yyvsp[0].node);
     }
-#line 5030 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5030 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 191: /* expr_list2: expr_list2 ',' expr_list_node  */
-#line 2463 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2463 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyvsp[0].node)->kind = 0;
 
@@ -5039,36 +5039,36 @@ yyreduce:
       (yyval.node)->l.expr->r.expr = (yyvsp[0].node);
       (yyval.node)->l.expr = (yyvsp[0].node);
     }
-#line 5043 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5043 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 192: /* expr_list3: %empty  */
-#line 2475 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2475 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       /* this is a dummy node */
       CREATE_EXPR_LIST((yyval.node), 0);
     }
-#line 5052 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5052 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 193: /* expr_list3: expr_list4  */
-#line 2480 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2480 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_LIST((yyval.node), (yyvsp[0].node));
     }
-#line 5060 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5060 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 194: /* expr_list3: expr_list4 ','  */
-#line 2484 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2484 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_EXPR_LIST((yyval.node), (yyvsp[-1].node));
     }
-#line 5068 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5068 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 195: /* expr_list4: assoc_pair  */
-#line 2491 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2491 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = new_node_no_line();
       (yyval.node)->kind = 2;
@@ -5078,11 +5078,11 @@ yyreduce:
       /* we keep track of the end of the chain in the left nodes */
       (yyval.node)->l.expr = (yyval.node);
     }
-#line 5082 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5082 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 196: /* expr_list4: expr_list4 ',' assoc_pair  */
-#line 2501 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2501 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *expr;
 
@@ -5097,19 +5097,19 @@ yyreduce:
       (yyvsp[-2].node)->kind += 2;
       (yyval.node) = (yyvsp[-2].node);
     }
-#line 5101 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5101 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 197: /* assoc_pair: expr0 ':' expr0  */
-#line 2519 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2519 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_TWO_VALUES((yyval.node), 0, (yyvsp[-2].node), (yyvsp[0].node));
     }
-#line 5109 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5109 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 198: /* lvalue: expr4  */
-#line 2526 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2526 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
 #define LV_ILLEGAL 1
 #define LV_RANGE 2
@@ -5222,19 +5222,19 @@ yyreduce:
           break;
       }
     }
-#line 5226 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5226 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 200: /* l_new_function_open: L_FUNCTION_OPEN efun_override  */
-#line 2643 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2643 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = ((yyvsp[0].number) << 8) | FP_EFUN;
     }
-#line 5234 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5234 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 202: /* expr4: L_DEFINED_NAME  */
-#line 2651 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2651 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int i;
       if ((i = (yyvsp[0].ihe)->dn.local_num) != -1) {
@@ -5307,11 +5307,11 @@ yyreduce:
           yyerror(buf);
         }
     }
-#line 5311 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5311 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 203: /* expr4: L_IDENTIFIER  */
-#line 2724 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2724 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       char buf[256];
       char *end = EndOf(buf);
@@ -5329,30 +5329,30 @@ yyreduce:
       if (current_function_context)
         current_function_context->bindable = FP_NOT_BINDABLE;
     }
-#line 5333 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5333 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 204: /* expr4: L_PARAMETER  */
-#line 2742 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2742 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_PARAMETER((yyval.node), TYPE_ANY, (yyvsp[0].number));
     }
-#line 5341 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5341 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 205: /* @13: %empty  */
-#line 2746 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2746 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.contextp) = current_function_context;
       /* already flagged as an error */
       if (current_function_context)
         current_function_context = current_function_context->parent;
     }
-#line 5352 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5352 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 206: /* expr4: '$' '(' @13 comma_expr ')'  */
-#line 2753 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2753 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *node;
 
@@ -5375,11 +5375,11 @@ yyreduce:
         node->v.expr = (yyvsp[-1].node);
       }
     }
-#line 5379 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5379 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 207: /* expr4: expr4 L_ARROW identifier  */
-#line 2776 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2776 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-2].node)->type == TYPE_ANY) {
         int cmi;
@@ -5403,11 +5403,11 @@ yyreduce:
 
       scratch_free((yyvsp[0].string));
     }
-#line 5407 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5407 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 208: /* expr4: expr4 L_DOT identifier  */
-#line 2800 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2800 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-2].node)->type == TYPE_ANY) {
         int cmi;
@@ -5431,11 +5431,11 @@ yyreduce:
 
       scratch_free((yyvsp[0].string));
     }
-#line 5435 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5435 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 209: /* expr4: expr4 '[' comma_expr L_RANGE comma_expr ']'  */
-#line 2824 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2824 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
     if (!CONFIG_INT(__RC_OLD_RANGE_BEHAVIOR__)) {
       if (CONFIG_INT(__RC_WARN_OLD_RANGE_BEHAVIOR__)) {
@@ -5446,57 +5446,57 @@ yyreduce:
     }
       (yyval.node) = make_range_node(F_NN_RANGE, (yyvsp[-5].node), (yyvsp[-3].node), (yyvsp[-1].node));
     }
-#line 5450 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5450 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 210: /* expr4: expr4 '[' '<' comma_expr L_RANGE comma_expr ']'  */
-#line 2835 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2835 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = make_range_node(F_RN_RANGE, (yyvsp[-6].node), (yyvsp[-3].node), (yyvsp[-1].node));
     }
-#line 5458 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5458 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 211: /* expr4: expr4 '[' '<' comma_expr L_RANGE '<' comma_expr ']'  */
-#line 2839 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2839 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-1].node)->kind == NODE_NUMBER && (yyvsp[-1].node)->v.number <= 1)
         (yyval.node) = make_range_node(F_RE_RANGE, (yyvsp[-7].node), (yyvsp[-4].node), 0);
       else
         (yyval.node) = make_range_node(F_RR_RANGE, (yyvsp[-7].node), (yyvsp[-4].node), (yyvsp[-1].node));
     }
-#line 5469 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5469 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 212: /* expr4: expr4 '[' comma_expr L_RANGE '<' comma_expr ']'  */
-#line 2846 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2846 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-1].node)->kind == NODE_NUMBER && (yyvsp[-1].node)->v.number <= 1)
         (yyval.node) = make_range_node(F_NE_RANGE, (yyvsp[-6].node), (yyvsp[-4].node), 0);
       else
         (yyval.node) = make_range_node(F_NR_RANGE, (yyvsp[-6].node), (yyvsp[-4].node), (yyvsp[-1].node));
     }
-#line 5480 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5480 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 213: /* expr4: expr4 '[' comma_expr L_RANGE ']'  */
-#line 2853 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2853 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = make_range_node(F_NE_RANGE, (yyvsp[-4].node), (yyvsp[-2].node), 0);
     }
-#line 5488 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5488 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 214: /* expr4: expr4 '[' '<' comma_expr L_RANGE ']'  */
-#line 2857 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2857 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = make_range_node(F_RE_RANGE, (yyvsp[-5].node), (yyvsp[-2].node), 0);
     }
-#line 5496 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5496 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 215: /* expr4: expr4 '[' '<' comma_expr ']'  */
-#line 2861 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2861 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (IS_NODE((yyvsp[-4].node), NODE_CALL, F_AGGREGATE)
           && (yyvsp[-1].node)->kind == NODE_NUMBER) {
@@ -5541,11 +5541,11 @@ yyreduce:
         }
       } else (yyval.node)->type = TYPE_ANY;
     }
-#line 5545 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5545 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 216: /* expr4: expr4 '[' comma_expr ']'  */
-#line 2906 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2906 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       /* Something stupid like ({ 1, 2, 3 })[1]; we take the
        * time to optimize this because people who don't understand
@@ -5601,19 +5601,19 @@ yyreduce:
         }
       } else (yyval.node)->type = TYPE_ANY;
     }
-#line 5605 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5605 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 218: /* expr4: '(' comma_expr ')'  */
-#line 2963 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2963 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[-1].node);
     }
-#line 5613 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5613 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 221: /* @14: %empty  */
-#line 2969 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2969 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       auto max_local_variables = CFG_INT(__MAX_LOCAL_VARIABLES__);
 
@@ -5634,11 +5634,11 @@ yyreduce:
       exact_types = TYPE_ANY;
       context = 0;
     }
-#line 5638 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5638 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 222: /* expr4: L_BASIC_TYPE @14 '(' argument ')' block  */
-#line 2990 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 2990 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if ((yyvsp[-2].argument).flags & ARG_IS_VARARGS) {
         yyerror("Anonymous varargs functions aren't implemented");
@@ -5674,11 +5674,11 @@ yyreduce:
       type_of_locals_ptr -= max_num_locals;
       reactivate_current_locals();
     }
-#line 5678 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5678 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 223: /* expr4: l_new_function_open ':' ')'  */
-#line 3026 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3026 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != ':') {
@@ -5716,11 +5716,11 @@ yyreduce:
           break;
       }
     }
-#line 5720 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5720 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 224: /* expr4: l_new_function_open ',' expr_list2 ':' ')'  */
-#line 3064 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3064 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != ':') {
@@ -5820,11 +5820,11 @@ yyreduce:
                       break;
       }
     }
-#line 5824 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5824 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 225: /* expr4: L_FUNCTION_OPEN comma_expr ':' ')'  */
-#line 3164 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3164 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != ':') {
@@ -5847,11 +5847,11 @@ yyreduce:
         + (current_function_context->num_parameters << 8);
       pop_function_context();
     }
-#line 5851 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5851 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 226: /* expr4: L_MAPPING_OPEN expr_list3 ']' ')'  */
-#line 3187 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3187 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != ']') {
@@ -5860,11 +5860,11 @@ yyreduce:
       }
       CREATE_CALL((yyval.node), F_AGGREGATE_ASSOC, TYPE_MAPPING, (yyvsp[-2].node));
     }
-#line 5864 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5864 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 227: /* expr4: L_ARRAY_OPEN expr_list '}' ')'  */
-#line 3196 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3196 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       if (CONFIG_INT(__RC_WOMBLES__)) {
         if(*(outp-2) != '}') {
@@ -5873,116 +5873,116 @@ yyreduce:
       }
       CREATE_CALL((yyval.node), F_AGGREGATE, TYPE_ANY | TYPE_MOD_ARRAY, (yyvsp[-2].node));
     }
-#line 5877 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5877 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 228: /* expr_or_block: block  */
-#line 3208 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3208 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].decl).node;
     }
-#line 5885 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5885 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 229: /* expr_or_block: '(' comma_expr ')'  */
-#line 3212 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3212 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = insert_pop_value((yyvsp[-1].node));
     }
-#line 5893 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5893 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 230: /* @15: %empty  */
-#line 3219 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3219 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       context = SPECIAL_CONTEXT;
     }
-#line 5902 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5902 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 231: /* catch: L_CATCH @15 expr_or_block  */
-#line 3224 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3224 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_CATCH((yyval.node), (yyvsp[0].node));
       context = (yyvsp[-1].number);
     }
-#line 5911 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5911 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 232: /* tree: L_TREE block  */
-#line 3232 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3232 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
 #ifdef DEBUG
       (yyval.node) = new_node_no_line();
       lpc_tree_form((yyvsp[0].decl).node, (yyval.node));
 #endif
     }
-#line 5922 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5922 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 233: /* tree: L_TREE '(' comma_expr ')'  */
-#line 3239 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3239 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
 #ifdef DEBUG
       (yyval.node) = new_node_no_line();
       lpc_tree_form((yyvsp[-1].node), (yyval.node));
 #endif
     }
-#line 5933 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5933 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 234: /* sscanf: L_SSCANF '(' expr0 ',' expr0 lvalue_list ')'  */
-#line 3249 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3249 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int p = (yyvsp[-1].node)->v.number;
       CREATE_LVALUE_EFUN((yyval.node), TYPE_NUMBER, (yyvsp[-1].node));
       CREATE_BINARY_OP_1((yyval.node)->l.expr, F_SSCANF, 0, (yyvsp[-4].node), (yyvsp[-2].node), p);
     }
-#line 5943 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5943 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 235: /* parse_command: L_PARSE_COMMAND '(' expr0 ',' expr0 ',' expr0 lvalue_list ')'  */
-#line 3258 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3258 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int p = (yyvsp[-1].node)->v.number;
       CREATE_LVALUE_EFUN((yyval.node), TYPE_NUMBER, (yyvsp[-1].node));
       CREATE_TERNARY_OP_1((yyval.node)->l.expr, F_PARSE_COMMAND, 0,
           (yyvsp[-6].node), (yyvsp[-4].node), (yyvsp[-2].node), p);
     }
-#line 5954 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5954 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 236: /* @16: %empty  */
-#line 3268 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3268 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       context = SPECIAL_CONTEXT;
     }
-#line 5963 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5963 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 237: /* time_expression: L_TIME_EXPRESSION @16 expr_or_block  */
-#line 3273 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3273 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_TIME_EXPRESSION((yyval.node), (yyvsp[0].node));
       context = (yyvsp[-1].number);
     }
-#line 5972 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5972 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 238: /* lvalue_list: %empty  */
-#line 3281 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3281 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.node) = new_node_no_line();
       (yyval.node)->r.expr = 0;
       (yyval.node)->v.number = 0;
     }
-#line 5982 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5982 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 239: /* lvalue_list: ',' lvalue lvalue_list  */
-#line 3287 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3287 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *insert;
 
@@ -5993,103 +5993,103 @@ yyreduce:
       (yyvsp[0].node)->r.expr = insert;
       (yyval.node)->v.number++;
     }
-#line 5997 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 5997 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 240: /* string: string_con2  */
-#line 3301 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3301 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       CREATE_STRING((yyval.node), (yyvsp[0].string));
       scratch_free((yyvsp[0].string));
     }
-#line 6006 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6006 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 242: /* string_con1: '(' string_con1 ')'  */
-#line 3310 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3310 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.string) = (yyvsp[-1].string);
     }
-#line 6014 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6014 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 243: /* string_con1: string_con1 '+' string_con1  */
-#line 3314 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3314 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.string) = scratch_join((yyvsp[-2].string), (yyvsp[0].string));
     }
-#line 6022 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6022 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 245: /* string_con2: string_con2 L_STRING  */
-#line 3322 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3322 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.string) = scratch_join((yyvsp[-1].string), (yyvsp[0].string));
     }
-#line 6030 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6030 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 246: /* class_init: identifier ':' expr0  */
-#line 3329 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3329 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = new_node();
       (yyval.node)->l.expr = (parse_node_t *)(yyvsp[-2].string);
       (yyval.node)->v.expr = (yyvsp[0].node);
       (yyval.node)->r.expr = 0;
     }
-#line 6041 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6041 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 247: /* opt_class_init: %empty  */
-#line 3339 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3339 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
             {
       (yyval.node) = 0;
     }
-#line 6049 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6049 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 248: /* opt_class_init: opt_class_init ',' class_init  */
-#line 3343 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3343 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].node);
       (yyval.node)->r.expr = (yyvsp[-2].node);
     }
-#line 6058 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6058 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 249: /* @17: %empty  */
-#line 3351 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3351 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       (yyvsp[0].number) = num_refs;
       context |= ARG_LIST;
     }
-#line 6068 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6068 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 250: /* function_call: efun_override '(' @17 expr_list ')'  */
-#line 3357 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3357 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       context = (yyvsp[-2].number);
       (yyval.node) = validate_efun_call((yyvsp[-4].number),(yyvsp[-1].node));
       (yyval.node) = check_refs(num_refs - (yyvsp[-3].number), (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-3].number);
     }
-#line 6079 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6079 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 251: /* @18: %empty  */
-#line 3364 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3364 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       (yyvsp[0].number) = num_refs;
       context |= ARG_LIST;
     }
-#line 6089 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6089 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 252: /* function_call: L_NEW '(' @18 expr_list ')'  */
-#line 3370 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3370 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       ident_hash_elem_t *ihe;
       int f;
@@ -6114,11 +6114,11 @@ yyreduce:
       (yyval.node) = check_refs(num_refs - (yyvsp[-3].number), (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-3].number);
     }
-#line 6118 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6118 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 253: /* function_call: L_NEW '(' L_CLASS L_DEFINED_NAME opt_class_init ')'  */
-#line 3395 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3395 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *node;
 
@@ -6157,11 +6157,11 @@ yyreduce:
         }
       }
     }
-#line 6161 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6161 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 254: /* function_call: L_NEW '(' L_CLASS L_IDENTIFIER opt_class_init ')'  */
-#line 3434 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3434 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *node;
       char buf[256];
@@ -6183,11 +6183,11 @@ yyreduce:
         node = node->r.expr;
       }
     }
-#line 6187 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6187 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 255: /* @19: %empty  */
-#line 3456 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3456 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.call_state).context = context;
       (yyval.call_state).num_refs = num_refs;
@@ -6195,11 +6195,11 @@ yyreduce:
           push_diagnostic_anchor(query_previous_non_eof_token_location());
       context |= ARG_LIST;
     }
-#line 6199 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6199 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 256: /* function_call: L_DEFINED_NAME '(' @19 expr_list ')'  */
-#line 3464 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3464 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int f;
       int i;
@@ -6335,11 +6335,11 @@ yyreduce:
       (yyval.node) = check_refs(num_refs - (yyvsp[-2].call_state).num_refs, (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-2].call_state).num_refs;
     }
-#line 6339 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6339 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 257: /* @20: %empty  */
-#line 3600 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3600 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.call_state).context = context;
       (yyval.call_state).num_refs = num_refs;
@@ -6347,11 +6347,11 @@ yyreduce:
           push_diagnostic_anchor(query_previous_non_eof_token_location());
       context |= ARG_LIST;
     }
-#line 6351 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6351 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 258: /* function_call: function_name '(' @20 expr_list ')'  */
-#line 3608 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3608 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       char *name = (yyvsp[-4].string);
       auto callee_location = pop_diagnostic_anchor((yyvsp[-2].call_state).callee_anchor);
@@ -6421,21 +6421,21 @@ yyreduce:
       num_refs = (yyvsp[-2].call_state).num_refs;
       scratch_free(name);
     }
-#line 6425 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6425 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 259: /* @21: %empty  */
-#line 3678 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3678 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       (yyvsp[0].number) = num_refs;
       context |= ARG_LIST;
     }
-#line 6435 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6435 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 260: /* function_call: expr4 '[' comma_expr ']' '(' @21 expr_list ')'  */
-#line 3684 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3684 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *expr;
       parse_node_t *index_expr;
@@ -6480,21 +6480,21 @@ yyreduce:
       (yyval.node) = check_refs(num_refs - (yyvsp[-3].number), (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-3].number);
     }
-#line 6484 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6484 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 261: /* @22: %empty  */
-#line 3729 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3729 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       (yyvsp[0].number) = num_refs;
       context |= ARG_LIST;
     }
-#line 6494 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6494 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 262: /* function_call: expr4 L_ARROW identifier '(' @22 expr_list ')'  */
-#line 3735 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3735 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       ident_hash_elem_t *ihe;
       int f;
@@ -6539,21 +6539,21 @@ yyreduce:
       (yyval.node) = check_refs(num_refs - (yyvsp[-3].number), (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-3].number);
     }
-#line 6543 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6543 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 263: /* @23: %empty  */
-#line 3780 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3780 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.number) = context;
       (yyvsp[0].number) = num_refs;
       context |= ARG_LIST;
     }
-#line 6553 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6553 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 264: /* function_call: '(' '*' comma_expr ')' '(' @23 expr_list ')'  */
-#line 3786 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3786 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       parse_node_t *expr;
 
@@ -6575,11 +6575,11 @@ yyreduce:
       (yyval.node) = check_refs(num_refs - (yyvsp[-3].number), (yyvsp[-1].node), (yyval.node));
       num_refs = (yyvsp[-3].number);
     }
-#line 6579 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6579 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 265: /* efun_override: L_EFUN L_COLON_COLON identifier  */
-#line 3811 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3811 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       svalue_t *res;
       ident_hash_elem_t *ihe;
@@ -6603,11 +6603,11 @@ yyreduce:
       }
       scratch_free((yyvsp[0].string));
     }
-#line 6607 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6607 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 266: /* efun_override: L_EFUN L_COLON_COLON L_NEW  */
-#line 3835 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3835 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       svalue_t *res;
 
@@ -6620,11 +6620,11 @@ yyreduce:
         (yyval.number) = -1;
       } else (yyval.number) = new_efun;
     }
-#line 6624 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6624 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 268: /* function_name: L_COLON_COLON identifier  */
-#line 3852 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3852 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int l = strlen((yyvsp[0].string)) + 1;
       char *p;
@@ -6638,11 +6638,11 @@ yyreduce:
         *(p+3) = *p;
       strncpy((yyval.string), ":::", 3);
     }
-#line 6642 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6642 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 269: /* function_name: L_BASIC_TYPE L_COLON_COLON identifier  */
-#line 3866 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3866 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int z, l = strlen((yyvsp[0].string)) + 1;
       char *p;
@@ -6657,11 +6657,11 @@ yyreduce:
       (yyval.string)[z-2] = ':';
       (yyval.string)[z-1] = ':';
     }
-#line 6661 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6661 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 270: /* function_name: identifier L_COLON_COLON identifier  */
-#line 3881 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3881 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       int l = strlen((yyvsp[-2].string));
       /* "ob" and "name" -> ":ob::name" */
@@ -6673,11 +6673,11 @@ yyreduce:
       scratch_free((yyvsp[-2].string));
       scratch_free((yyvsp[0].string));
     }
-#line 6677 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6677 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 271: /* cond: L_IF '(' comma_expr ')' statement optional_else_part  */
-#line 3896 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3896 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       /* x != 0 -> x */
       if (IS_NODE((yyvsp[-3].node), NODE_BINARY_OP, F_NE)) {
@@ -6708,27 +6708,27 @@ yyreduce:
       }
       CREATE_IF((yyval.node), (yyvsp[-3].node), (yyvsp[-1].node), (yyvsp[0].node));
     }
-#line 6712 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6712 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 272: /* optional_else_part: %empty  */
-#line 3930 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3930 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = 0;
     }
-#line 6720 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6720 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
   case 273: /* optional_else_part: L_ELSE statement  */
-#line 3934 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3934 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
     {
       (yyval.node) = (yyvsp[0].node);
     }
-#line 6728 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6728 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
     break;
 
 
-#line 6732 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.cc"
+#line 6732 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.cc"
 
         default: break;
       }
@@ -6963,5 +6963,5 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 3938 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
+#line 3938 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
 

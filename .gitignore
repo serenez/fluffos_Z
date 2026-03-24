@@ -6,7 +6,7 @@
 # default idea build directory
 /cmake-build-*
 
-
+dist/
 /target
 **/*.rs.bk
 /docs/.bundle

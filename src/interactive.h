@@ -6,8 +6,8 @@
 
 #include "vm/vm.h"  // FIXME: for union string_or_func
 
-//#define MAX_TEXT (1 * 1024 * 1024)
-#define MAX_TEXT (64 * 1024)
+#define MAX_TEXT (1 * 1024 * 1024)
+#define INTERACTIVE_TEXT_INITIAL_CAPACITY (4 * 1024)
 
 #define I_NOECHO 0x1          /* input_to flag */
 #define I_NOESC 0x2           /* input_to flag */
@@ -57,7 +57,8 @@ struct interactive_t {
   int local_port;      /* which of our ports they connected to    */
   int external_port;   /* external port index for connection      */
   const char *prompt;  /* prompt string for interactive object    */
-  char text[MAX_TEXT]; /* input buffer for interactive object     */
+  char *text;          /* dynamic input buffer for interactive object */
+  int text_capacity;   /* allocated bytes in input buffer         */
   int text_end;        /* first free char in buffer               */
   int text_start;      /* where we are up to in user command buffer */
   time_t last_time;    /* time of last command executed           */

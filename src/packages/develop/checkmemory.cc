@@ -610,9 +610,16 @@ void check_all_blocks(int flag) {
     if (blocks[TAG_MAP_TBL & 0xff] != num_mappings)
       outbuf_addv(&out, "WARNING: %" PRIu64 " tables for %" PRIu64 " mappings\n",
                   blocks[TAG_MAP_TBL & 0xff], num_mappings);
-    if (blocks[TAG_INTERACTIVE & 0xff] != users_num(true))
-      outbuf_addv(&out, "WATNING: num_user is: %d should be: %" PRIu64 "\n", users_num(true),
-                  blocks[TAG_INTERACTIVE & 0xff]);
+    uint64_t expected_interactive_blocks = 0;
+    for (const auto &user : users()) {
+      expected_interactive_blocks++;
+      if (user->text) {
+        expected_interactive_blocks++;
+      }
+    }
+    if (blocks[TAG_INTERACTIVE & 0xff] != expected_interactive_blocks)
+      outbuf_addv(&out, "WATNING: interactive blocks is: %" PRIu64 " should be: %" PRIu64 "\n",
+                  blocks[TAG_INTERACTIVE & 0xff], expected_interactive_blocks);
 
     // String checks
     check_string_stats(&out);
@@ -643,6 +650,9 @@ void check_all_blocks(int flag) {
     /* now do a mark and sweep check to see what should be alloc'd */
     for (const auto &user : users()) {
       DO_MARK(user, TAG_INTERACTIVE);
+      if (user->text) {
+        DO_MARK(user->text, TAG_INTERACTIVE);
+      }
       user->ob->extra_ref++;
       // FIXME(sunyc): I can't explain this, appearently somewhere
       // is giving interactive object an addtional ref.
