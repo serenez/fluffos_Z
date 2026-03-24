@@ -1,149 +1,138 @@
-[![CI Status](https://github.com/fluffos/fluffos/actions/workflows/ci.yml/badge.svg)](https://github.com/fluffos/fluffos/actions)
-[![CI Status](https://github.com/fluffos/fluffos/actions/workflows/ci-osx.yml/badge.svg)](https://github.com/fluffos/fluffos/actions)
-[![CI Status](https://github.com/fluffos/fluffos/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/fluffos/fluffos/actions)
+# FluffOS
 
+这个分支在保留 FluffOS 现有 LPC 驱动兼容性的基础上，重点加入了
+`gateway` 网关链路、多个新的 LPC 扩展包，以及更完整的编译诊断能力。
 
-[![Backers on Open Collective](https://opencollective.com/fluffos-579/backers/badge.svg)](#backers)
-[![Sponsors on Open Collective](https://opencollective.com/fluffos-579/sponsors/badge.svg)](#sponsors)
+如果你想快速了解这个分支新增了什么，先看这份 README，而不是沿用上游那版
+偏通用的介绍。
 
-Welcome
-=======
-FluffOS is an LPMUD driver, based on the last release of MudOS (v22.2b14), includes 10+ years of bug
- fixes and performance enhancement, with active support.
+英文版说明见 [README_EN.md](README_EN.md)。
 
-FluffOS supports all LPC based mud with very little code changes. if you are currently still using MudOS somehow
- it is definitely time to upgrade!
+## 本分支新增功能
 
-It is recommended to use the latest release on Github or the master branch, previous versions (v2017 in particular) are
-not supported.
+### 1. Gateway 网关包
 
-Build
------
-FluffOS's main platform is ubuntu 22.04 LTS, but also works on latest OSX and Windows (MSYS2/mingw64), WSL with
-ubuntu 22.04 works fine too.
+新增 `gateway` 包，用来把驱动接到外部网关进程。
 
-Build system: cmake (3.20)
+当前代码里已经接通的能力包括：
 
-Features
---------
-LPC Language since FluffOS v2017
-  - LPC string operations are UTF-8 EGS aware, range operator supports emoji and other unicode characters.
-  - various new EFUNS for transparent input/output transcoding.
+- 独立的 gateway 监听端口，不复用 telnet / websocket 端口
+- 4 字节大端长度头 + JSON 的网关协议
+- gateway 主连接管理和玩家会话管理
+- 心跳、超时、状态查询
+- gateway 用户输出自动回写到网关链路
+- 面向 LPC 的监听、配置、广播、定向发送、会话查询、会话销毁等 efun
 
-LPC Language since MudOS
-  - Please read docs/archive/ChangeLog.* files for details
+相关文档与示例：
 
-Driver Runtime
-  - Jemalloc support
-  - SHA512 crypt by default.
-  - LPC Tracing
-  - Mysql, Postgresql, SQLLite integration
-  - Async IO operations
-  - External program integration
+- 协议与 LPC 对接说明：
+  [docs/driver/gateway.md](docs/driver/gateway.md)
+- 最小 LPC 示例：
+  [testsuite/clone/gateway_login_example.c](testsuite/clone/gateway_login_example.c)
 
-Networking
-  - TLS support
-  - Websocket protocol support (with a minimal example for a webclient)
+### 2. JSON 扩展包
 
-LPC Standard Library
-  - see files under testsuite/std.
+新增 `json_extension` 包，直接给 LPC 提供 JSON 能力：
 
-Misc
-  - Testsuite for all EFUNS
-  - Detailed memory accounting (through mud_status(1) EFUN)
-  - Memory leak detection
+- `json_encode(mixed)`
+- `json_decode(string)`
+- `write_json(string, mixed)`
+- `read_json(string)`
+- `sort_mapping(mapping, int|void)`
+- `sort_mapping_int(mapping, int|void)`
 
-V2017
------
-v2017 is the legacy version, with an autoconf based build system, it supports compiling on centOS/ubuntu
-and under windows using CYGWIN. This release is no longer supported, it is kept only for historical interest now.
+### 3. 实用工具包
 
-All previous MudOS and FluffOS releases are also kept in the code base as tags for historical reference.
+这次还新增了两个 LPC 侧工具包：
 
-Support
--------
-- Website / Documentation: https://www.fluffos.info
-- Discord Support: #fluffos channel on LPC [https://discord.gg/E5ycwE8NCc](https://discord.gg/E5ycwE8NCc)
-- Forum: https://forum.fluffos.info
-- QQ support Group: 451819151 [![451819151](https://pub.idqqimg.com/wpa/images/group.png)](https://shang.qq.com/wpa/qunwpa?idkey=3fd552adb8ace1a8e3ae3a712e5d314c7caf49af8b87449473c595b7e1f1ddf9)
+- `myutil`
+  - `uuid()`
+  - `strbuf_new()`
+  - `strbuf_add()`
+  - `strbuf_addf()`
+  - `strbuf_dump()`
+  - `strbuf_clear()`
+- `seed_random`
+  - `seed_random()`
+  - `seed_random_batch()`
+  - `seed_next()`
 
-How to Build
-------------
-see <https://www.fluffos.info/build.html>
+### 4. 编译诊断增强
 
-Bundled Third-party Dependencies
-----------------------
-- libwebsockets: <https://libwebsockets.org/>
-- libevent: <https://libwebsockets.org/>
-- backward-cpp <https://github.com/bombela/backward-cpp>
-- crypt from musl: <https://www.musl-libc.org/>
-- ghc::filesystem <https://github.com/gulrak/filesystem>
-- nlohmann::json <https://github.com/nlohmann/json>
-- scope_guard <https://github.com/Neargye/scope_guard>
-- utfcpp <https://github.com/nemtrif/utfcpp>
-- utf8_decoder <http://bjoern.hoehrmann.de/utf-8/decoder/dfa/>
-- libtelnet, based on <https://github.com/seanmiddleditch/libtelnet> with local modifications
+编译器和 mudlib 错误处理现在会暴露更完整的结构化编译诊断信息，包括：
 
-Non-bundled platform dependencies includes: libevent, ICU4C, OpenSSL, Zlib etc.
+- 文件
+- 行号
+- 列号
+- 源码片段
+- caret 定位
 
-Projects Using FluffOS
-----------------------
-[Add Your Own](https://github.com/fluffos/fluffos/edit/master/README.md)
+本次提交也补了多组回归测试，覆盖：
 
-- Practically all Chinese
-- [ThresholdRPG](https://wiki.thresholdrpg.com/)
-- [SWmud](http://www.swmud.org/)
-- [Merentha](https://www.merentha.com/)
-- [Reinos de Leyenda](https://www.reinosdeleyenda.es)
+- 直接语法错误
+- include / header 语法错误
+- 参数类型报错定位
+- locals 扩容与 scratchpad 行为
+- heartbeat 生命周期
+- inherit_list 上限
+- UTF-8 截断与 eval deadline 路径
 
-Donations
----------
-I would like to personal thank all the sponsors and contributors for showing their support.
-All donations are 100% used towards purchasing tools, equipments and hosting cost for FluffOS development and website
- and forum hosting.
+### 5. 运行时与平台改进
 
-The list is in descending order by time donation received.
+这次提交也顺带补强了一些底层能力，细节不在 README 展开，只列核心方向：
 
-##### Received in 2019 Jan
+- interactive 增加 gateway 会话字段
+- `exec()` / `remove_interactive()` 增加 gateway 映射联动
+- 工具模式支持不依赖 backend 的离线初始化
+- Windows 控制台 UTF-8 / UTF-16 输出改进
+- heartbeat、call_out、eval deadline、inherit_list 的稳定性修正
 
-- 逍遥山人, qq1102907881
-- lostsnow
-- 小瓶盖
-- 星星 qq 55833173
-- 胜华 gon***@126.com
+## 快速构建
 
-#### Received in 2018 Nov
+主要构建平台仍然是 Linux、macOS，以及 Windows 的 MSYS2 / MINGW64。
 
-- felchoin@sjever
-- 朝亮 wuc***@163.com
-- 羽天邪
-- 风清扬 832***@qq.com
-- Mok say***@139.com
-- 春龙 lon***@gmail.com
-- 碎梦 lih***@163.com
+如果本地不需要 DB 包，可以直接这样构建：
 
-## Contributors
+```bash
+cmake -S . -B build -G Ninja -DPACKAGE_DB=OFF
+cmake --build build --target driver
+```
 
-This project exists thanks to all the people who contribute.
-<a href="https://github.com/fluffos/fluffos/graphs/contributors"><img src="https://opencollective.com/fluffos-579/contributors.svg?width=890&button=false" /></a>
+本分支新增功能最相关的开关：
 
-## Backers
+- `-DPACKAGE_GATEWAY=ON`
+- `-DPACKAGE_JSON_EXTENSION=ON`
+- `-DPACKAGE_MYUTIL=ON`
 
-Thank you to all our backers! 🙏 [[Become a backer](https://opencollective.com/fluffos-579#backer)]
+本次新增的 gateway 运行时配置项：
 
-<a href="https://opencollective.com/fluffos-579#backers" target="_blank"><img src="https://opencollective.com/fluffos-579/backers.svg?width=890"></a>
+- `gateway port`
+- `gateway external`
+- `gateway debug`
+- `gateway packet size`
 
-## Sponsors
+## 代码入口
 
-Support this project by becoming a sponsor. Your logo will show up here with a link to your website. [[Become a sponsor](https://opencollective.com/fluffos-579#sponsor)]
+- gateway 核心实现：
+  [`src/packages/gateway/`](src/packages/gateway)
+- gateway efun 声明：
+  [`src/packages/gateway/gateway.spec`](src/packages/gateway/gateway.spec)
+- gateway 初始化入口：
+  [`src/mainlib.cc`](src/mainlib.cc)
+- JSON 扩展：
+  [`src/packages/json_extension/`](src/packages/json_extension)
+- 实用工具包：
+  [`src/packages/myutil/`](src/packages/myutil),
+  [`src/packages/seed_random/`](src/packages/seed_random)
 
-<a href="https://opencollective.com/fluffos-579/sponsor/0/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/0/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/1/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/1/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/2/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/2/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/3/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/3/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/4/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/4/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/5/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/5/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/6/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/6/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/7/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/7/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/8/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/8/avatar.svg"></a>
-<a href="https://opencollective.com/fluffos-579/sponsor/9/website" target="_blank"><img src="https://opencollective.com/fluffos-579/sponsor/9/avatar.svg"></a>
+## 相关说明
+
+- 这次大提交的代码评审记录：
+  [docs/driver/uncommitted_review_2026_03_24.md](docs/driver/uncommitted_review_2026_03_24.md)
+
+## 支持
+
+- 官网 / 文档：<https://www.fluffos.info>
+- 论坛：<https://forum.fluffos.info>
+- Discord：<https://discord.gg/E5ycwE8NCc>
+- QQ 群：`451819151`
