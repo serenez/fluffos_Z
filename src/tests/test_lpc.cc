@@ -28,6 +28,10 @@
 #include "vm/internal/simulate.h"
 
 char *extract_first_command_for_test(interactive_t *ip);
+bool schedule_user_logon_for_test(event_base *base, interactive_t *user);
+void cleanup_pending_user_for_test(interactive_t *user, bool close_socket);
+void reset_user_logon_callback_runs_for_test();
+int user_logon_callback_runs_for_test();
 
 namespace {
 
@@ -680,6 +684,65 @@ TEST_F(DriverTest, TestAsciiChunkProcessesCommandAfterCrLfInSameRead) {
   FREE(ip);
   destruct_object(ob);
   free_object(&ob, "DriverTest::TestAsciiChunkProcessesCommandAfterCrLfInSameRead");
+}
+
+TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+  call_lpc_method(ob, "enable_destroy_on_input");
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ob->interactive = ip;
+
+  const unsigned char chunk[] = {'q', 'u', 'i', 't', '\n', 'n', 'e', 'x', 't', '\n'};
+  EXPECT_EQ(1, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+  EXPECT_TRUE(ob->flags & O_DESTRUCTED);
+
+  if (!(ob->flags & O_DESTRUCTED) && ob->interactive == ip) {
+    ob->interactive = nullptr;
+    user_del(ip);
+    interactive_free_text(ip);
+    FREE(ip);
+    destruct_object(ob);
+  }
+  free_object(&ob, "DriverTest::TestAsciiChunkStopsAfterProcessInputDestructsObject");
+}
+
+TEST_F(DriverTest, TestScheduledUserLogonCanBeCancelledBeforeDispatch) {
+  auto *base = event_base_new();
+  ASSERT_NE(base, nullptr);
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = master_ob;
+  ip->fd = -1;
+  ip->local_port = 9527;
+
+  reset_user_logon_callback_runs_for_test();
+  ASSERT_TRUE(schedule_user_logon_for_test(base, ip));
+  ASSERT_NE(ip->ev_logon, nullptr);
+
+  cleanup_pending_user_for_test(ip, false);
+  event_base_loop(base, EVLOOP_NONBLOCK);
+  EXPECT_EQ(0, user_logon_callback_runs_for_test());
+
+  event_base_free(base);
 }
 
 TEST_F(DriverTest, TestGatewayMaxPacketSizeRemainsIndependentFromMaxText) {

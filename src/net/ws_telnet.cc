@@ -14,8 +14,9 @@
 
 // from comm.cc
 interactive_t *new_user(port_def_t *port, evutil_socket_t fd, sockaddr *addr, socklen_t addrlen);
-extern void on_user_logon(interactive_t *);
 extern void remove_interactive(object_t *ob, int dested);
+extern void cleanup_pending_user(interactive_t *user, bool close_socket);
+extern bool schedule_user_logon(event_base *base, interactive_t *user);
 int cmd_in_buf(interactive_t *ip);
 
 void on_user_websocket_telnet_received(interactive_t *ip, const char *data, size_t len);
@@ -103,7 +104,7 @@ int ws_telnet_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
       pss->user = ip;
       pss->buffer = evbuffer_new();
       if (!pss->buffer) {
-        remove_interactive(ip->ob, 0);
+        cleanup_pending_user(ip, false);
         pss->user = nullptr;
         return -1;
       }
@@ -116,13 +117,13 @@ int ws_telnet_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
       send_initial_telnet_negotiations(ip);
 
       auto base = evconnlistener_get_base(port->ev_conn);
-      event_base_once(
-          base, -1, EV_TIMEOUT,
-          [](evutil_socket_t fd, short what, void *arg) {
-            auto user = reinterpret_cast<interactive_t *>(arg);
-            on_user_logon(user);
-          },
-          (void *)ip, nullptr);
+      if (!schedule_user_logon(base, ip)) {
+        cleanup_pending_user(ip, false);
+        pss->user = nullptr;
+        evbuffer_free(pss->buffer);
+        pss->buffer = nullptr;
+        return -1;
+      }
       break;
     }
     case LWS_CALLBACK_CLOSED: {

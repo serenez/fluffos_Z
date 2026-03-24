@@ -72,6 +72,7 @@ struct UserEventData {
 };
 
 constexpr int kUserReadChunkSize = 64 * 1024;
+int g_user_logon_callback_runs_for_test = 0;
 
 bool ensure_text_tail_capacity(interactive_t *ip, int extra_bytes) {
   if (!ip || extra_bytes < 0) {
@@ -143,11 +144,19 @@ int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, in
     }
 
     if (!(ip->ob->flags & O_DESTRUCTED)) {
+      auto *owner = ip->ob;
+      add_ref(owner, "process_ascii_chunk_internal");
       auto *str = new_string(line_end - line_start, "PORT_ASCII");
       memcpy(str, line_start, line_end - line_start + 1);
       push_malloced_string(str);
       set_eval(max_eval_cost);
-      safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
+      safe_apply(APPLY_PROCESS_INPUT, owner, 1, ORIGIN_DRIVER);
+      bool still_attached = !(owner->flags & O_DESTRUCTED) && owner->interactive == ip;
+      free_object(&owner, "process_ascii_chunk_internal");
+      if (!still_attached) {
+        processed++;
+        return processed;
+      }
     }
 
     processed++;
@@ -160,6 +169,106 @@ int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, in
   }
 
   return processed;
+}
+
+void cleanup_pending_user_internal(interactive_t *user, bool close_socket) {
+  if (!user) {
+    return;
+  }
+
+  bool had_ev_buffer = user->ev_buffer != nullptr;
+
+  if (user->ev_logon) {
+    evtimer_del(user->ev_logon);
+    event_free(user->ev_logon);
+    user->ev_logon = nullptr;
+  }
+
+  if (user->ev_buffer != nullptr) {
+    if (user->ssl) {
+      SSL_set_shutdown(user->ssl, SSL_RECEIVED_SHUTDOWN);
+      SSL_shutdown(user->ssl);
+      user->ssl = nullptr;
+    }
+    bufferevent_free(user->ev_buffer);
+    user->ev_buffer = nullptr;
+  } else if (user->ssl) {
+    SSL_free(user->ssl);
+    user->ssl = nullptr;
+  }
+
+  if (user->ev_command != nullptr) {
+    evtimer_del(user->ev_command);
+    event_free(user->ev_command);
+    user->ev_command = nullptr;
+  }
+
+  if (user->telnet != nullptr) {
+    telnet_free(user->telnet);
+    user->telnet = nullptr;
+  }
+
+  if (user->trans != nullptr) {
+    ucnv_close(user->trans);
+    user->trans = nullptr;
+  }
+
+  if (user->gateway_session_id) {
+    FREE_MSTR(user->gateway_session_id);
+    user->gateway_session_id = nullptr;
+  }
+  if (user->gateway_real_ip) {
+    FREE_MSTR(user->gateway_real_ip);
+    user->gateway_real_ip = nullptr;
+  }
+
+  if (close_socket && !had_ev_buffer && user->fd >= 0) {
+    evutil_closesocket(user->fd);
+    user->fd = -1;
+  }
+
+  user_del(user);
+  interactive_free_text(user);
+  FREE(user);
+}
+
+void on_user_logon_timer(evutil_socket_t /*fd*/, short /*what*/, void *arg) {
+  auto *user = reinterpret_cast<interactive_t *>(arg);
+  if (!user) {
+    return;
+  }
+
+  g_user_logon_callback_runs_for_test++;
+
+  if (user->ev_logon) {
+    event_free(user->ev_logon);
+    user->ev_logon = nullptr;
+  }
+
+  on_user_logon(user);
+}
+
+bool schedule_user_logon_internal(event_base *base, interactive_t *user) {
+  if (!base || !user) {
+    return false;
+  }
+  if (user->ev_logon) {
+    return false;
+  }
+
+  user->ev_logon = evtimer_new(base, on_user_logon_timer, user);
+  if (!user->ev_logon) {
+    return false;
+  }
+
+  struct timeval zero_sec = {0, 0};
+  if (evtimer_add(user->ev_logon, &zero_sec) != 0) {
+    event_free(user->ev_logon);
+    user->ev_logon = nullptr;
+    return false;
+  }
+
+  return true;
 }
 
 void on_user_command(evutil_socket_t fd, short what, void *arg) {
@@ -230,16 +339,28 @@ void on_user_events(bufferevent * /*bev*/, short events, void *arg) {
   }
 }
 
-void new_user_event_listener(event_base *base, interactive_t *user) {
+bool new_user_event_listener(event_base *base, interactive_t *user) {
+  if (!base || !user) {
+    return false;
+  }
   auto options = BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS;
   auto *bev = user->ssl ? bufferevent_openssl_socket_new(base, user->fd, user->ssl,
                                                          BUFFEREVENT_SSL_ACCEPTING, options)
                         : bufferevent_socket_new(base, user->fd, options);
+  if (!bev) {
+    return false;
+  }
+
+  user->ev_buffer = bev;
 
   bufferevent_setcb(bev, on_user_read, on_user_write, on_user_events, user);
-  bufferevent_enable(bev, EV_READ | EV_WRITE);
-  bufferevent_set_timeouts(bev, nullptr, nullptr);
-  user->ev_buffer = bev;
+  if (bufferevent_enable(bev, EV_READ | EV_WRITE) != 0) {
+    return false;
+  }
+  if (bufferevent_set_timeouts(bev, nullptr, nullptr) != 0) {
+    return false;
+  }
+  return true;
 }
 
 /*
@@ -284,20 +405,20 @@ void new_conn_handler(evconnlistener *listener, evutil_socket_t fd, struct socka
       evutil_closesocket(fd);
       return;
     }
-    new_user_event_listener(base, user);
+    if (!new_user_event_listener(base, user)) {
+      cleanup_pending_user_internal(user, true);
+      return;
+    }
 
     if (user->connection_type == PORT_TYPE_TELNET) {
       user->telnet = net_telnet_init(user);
       send_initial_telnet_negotiations(user);
     }
 
-    event_base_once(
-        base, -1, EV_TIMEOUT,
-        [](evutil_socket_t /*fd*/, short /*what*/, void *arg) {
-          auto *user = reinterpret_cast<interactive_t *>(arg);
-          on_user_logon(user);
-        },
-        (void *)user, nullptr);
+    if (!schedule_user_logon_internal(base, user)) {
+      cleanup_pending_user_internal(user, true);
+      return;
+    }
   }
   debug(connections, ("new_conn_handler: end\n"));
 } /* new_conn_handler() */
@@ -326,12 +447,22 @@ interactive_t *new_user(port_def_t *port, evutil_socket_t fd, sockaddr *addr,
   user->addrlen = addrlen;
   if (port->ssl) {
     user->ssl = tls_get_client_ctx(port->ssl);
+    if (!user->ssl) {
+      user_del(user);
+      interactive_free_text(user);
+      FREE(user);
+      return nullptr;
+    }
   }
 
   // Command handler
   auto *base = evconnlistener_get_base(port->ev_conn);
   user->ev_command = evtimer_new(base, on_user_command, user);
   if (!user->ev_command) {
+    if (user->ssl) {
+      SSL_free(user->ssl);
+      user->ssl = nullptr;
+    }
     user_del(user);
     interactive_free_text(user);
     FREE(user);
@@ -1202,6 +1333,26 @@ int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, in
   return process_ascii_chunk_internal(ip, buf, num_bytes);
 }
 
+bool schedule_user_logon(event_base *base, interactive_t *user) {
+  return schedule_user_logon_internal(base, user);
+}
+
+void cleanup_pending_user(interactive_t *user, bool close_socket) {
+  cleanup_pending_user_internal(user, close_socket);
+}
+
+bool schedule_user_logon_for_test(event_base *base, interactive_t *user) {
+  return schedule_user_logon_internal(base, user);
+}
+
+void cleanup_pending_user_for_test(interactive_t *user, bool close_socket) {
+  cleanup_pending_user_internal(user, close_socket);
+}
+
+void reset_user_logon_callback_runs_for_test() { g_user_logon_callback_runs_for_test = 0; }
+
+int user_logon_callback_runs_for_test() { return g_user_logon_callback_runs_for_test; }
+
 static int escape_command(interactive_t *ip, const char *user_command) {
   if (user_command[0] != '!') {
     return 0;
@@ -1426,6 +1577,11 @@ void remove_interactive(object_t *ob, int dested) {
     evtimer_del(ip->ev_command);
     event_free(ip->ev_command);
     ip->ev_command = nullptr;
+  }
+  if (ip->ev_logon != nullptr) {
+    evtimer_del(ip->ev_logon);
+    event_free(ip->ev_logon);
+    ip->ev_logon = nullptr;
   }
 
   // Free telnet handle

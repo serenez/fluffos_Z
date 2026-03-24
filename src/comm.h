@@ -6,6 +6,7 @@
 #ifndef COMM_H
 #define COMM_H
 
+#include <event2/event.h>
 #include <event2/util.h>
 
 /*
@@ -69,6 +70,8 @@ const char *sockaddr_to_string(const sockaddr *addr, ev_socklen_t len);
 
 interactive_t *new_user(port_def_t *, evutil_socket_t, sockaddr *, ev_socklen_t);
 void on_user_logon(interactive_t *);
+bool schedule_user_logon(event_base *base, interactive_t *user);
+void cleanup_pending_user(interactive_t *user, bool close_socket);
 
 int cmd_in_buf(interactive_t *ip);
 void on_user_input(interactive_t *ip, const char *data, size_t len);
@@ -76,5 +79,9 @@ void on_user_websocket_received(interactive_t *ip, const char *data, size_t len)
 void on_user_websocket_telnet_received(interactive_t *ip, const char *data, size_t len);
 bool mud_packet_is_complete(int packet_size, int text_end);
 int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes);
+bool schedule_user_logon_for_test(event_base *base, interactive_t *user);
+void cleanup_pending_user_for_test(interactive_t *user, bool close_socket);
+void reset_user_logon_callback_runs_for_test();
+int user_logon_callback_runs_for_test();
 
 #endif /* COMM_H */
