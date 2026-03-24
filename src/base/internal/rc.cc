@@ -49,7 +49,7 @@ const FlagEntry INT_FLAGS[] = {
 
     {"inherit chain size", __INHERIT_CHAIN_SIZE__, 30},
     {"maximum evaluation cost", __MAX_EVAL_COST__, 30000000},
-    {"maximum local variables", __MAX_LOCAL_VARIABLES__, 64, 64, UINT8_MAX},
+    {"maximum local variables", __MAX_LOCAL_VARIABLES__, 64, 1, UINT8_MAX},
     {"maximum call depth", __MAX_CALL_DEPTH__, CFG_MAX_CALL_DEPTH},
 
     {"maximum array size", __MAX_ARRAY_SIZE__, 15000},
@@ -104,6 +104,12 @@ const FlagEntry INT_FLAGS[] = {
     {"enable mssp", __RC_ENABLE_MSSP__, 1},
     {"enable msp", __RC_ENABLE_MSP__, 1},
     {"enable msdp", __RC_ENABLE_MSDP__, 0},
+
+    // Gateway 配置
+    {"gateway port", __RC_GATEWAY_PORT__, 0},
+    {"gateway external", __RC_GATEWAY_EXTERNAL__, 0},
+    {"gateway debug", __RC_GATEWAY_DEBUG__, 0},
+    {"gateway packet size", __RC_GATEWAY_PACKET_SIZE__, 1048576, 1024, 16 * 1024 * 1024},
 };
 
 /*

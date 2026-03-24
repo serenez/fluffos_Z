@@ -3,6 +3,9 @@
 
 class LexStream;
 
+#include <string>
+
+#include "compiler/internal/lex.h"
 #include "vm/internal/base/function.h"  // for function_t
 #include "vm/internal/base/program.h"   // for DECL_MODS etc
 #include "trees.h"
@@ -26,6 +29,17 @@ struct mem_block_t {
   char *block;
   int current_size;
   int max_size;
+};
+
+struct compile_diagnostic_snapshot_t {
+  bool valid;
+  std::string object_name;
+  std::string file;
+  int line;
+  int column;
+  std::string message;
+  std::string source_line;
+  std::string caret_line;
 };
 
 #define START_BLOCK_SIZE 4096
@@ -85,6 +99,8 @@ struct local_info_t {
   int runtime_index;
   parse_node_t *funcptr_default;
   struct ident_hash_elem_t *ihe;
+  compiler_error_location_t *declaration_location;
+  bool suppress_unused_warning;
 };
 
 extern mem_block_t mem_block[NUMAREAS];
@@ -200,13 +216,18 @@ void save_file_info(int, int);
 int add_program_file(const char *, int);
 void yyerror(const char *fmt, ...);
 void yywarn(const char *fmt, ...);
+void yyerror_at(compiler_error_location_t, const char *fmt, ...);
+void yywarn_at(compiler_error_location_t, const char *fmt, ...);
+void remember_parse_node_diagnostic_location(parse_node_t *, compiler_error_location_t);
+compiler_error_location_t query_parse_node_diagnostic_location(parse_node_t *);
+void clear_parse_node_diagnostic_locations(void);
 char *the_file_name(const char *);
 void free_all_local_names(int);
 void pop_n_locals(int);
 void reactivate_current_locals(void);
 void clean_up_locals(void);
 void deactivate_current_locals(void);
-int add_local_name(const char *, int, parse_node_t* = nullptr);
+int add_local_name(const char *, int, parse_node_t* = nullptr, int = -1, bool = false);
 void reallocate_locals(void);
 void initialize_locals(void);
 int get_id_number(void);
@@ -220,9 +241,9 @@ int compatible_types(int, int);
 int compatible_types2(int, int);
 int arrange_call_inherited(char *, parse_node_t *);
 void add_arg_type(unsigned short);
-int define_new_function(const char *, int, int, int, int);
+int define_new_function(const char *, int, int, int, int, int = -1);
 int define_variable(const char *, int);
-int define_new_variable(const char *, int);
+int define_new_variable(const char *, int, int = -1);
 short store_prog_string(const char *);
 void free_prog_string(short);
 #ifdef DEBUG
@@ -273,6 +294,8 @@ char *allocate_in_mem_block(int, int);
 
 // Log errors during compiling
 void smart_log(const char *, int, const char *, int);
+void clear_last_compile_diagnostic(void);
+bool take_last_compile_diagnostic(compile_diagnostic_snapshot_t *);
 
 // FIXME: 'inherit_file' is used as a flag.
 extern char *inherit_file;

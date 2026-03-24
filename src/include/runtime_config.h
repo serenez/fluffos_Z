@@ -110,5 +110,11 @@
 #define __RC_ENABLE_MSP__ CFG_INT(63)
 #define __RC_ENABLE_MSDP__ CFG_INT(64)
 
+// Gateway 配置
+#define __RC_GATEWAY_PORT__ CFG_INT(65)
+#define __RC_GATEWAY_EXTERNAL__ CFG_INT(66)
+#define __RC_GATEWAY_DEBUG__ CFG_INT(67)
+#define __RC_GATEWAY_PACKET_SIZE__ CFG_INT(68)
+
 #define RC_LAST_CONFIG_INT CFG_INT(255)
 #endif /* RUNTIME_CONFIG_H */

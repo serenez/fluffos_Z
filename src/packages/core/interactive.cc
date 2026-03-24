@@ -1,4 +1,5 @@
 #include "base/package_api.h"
+#include "interactive.h"
 
 #ifdef F_EXEC
 int replace_interactive(object_t *ob, object_t *obfrom) {
@@ -21,6 +22,13 @@ int replace_interactive(object_t *ob, object_t *obfrom) {
   add_ref(ob, "exec");
   if (obfrom == command_giver) {
     set_command_giver(ob);
+  }
+
+  // Update gateway session mapping if applicable
+  // 增强安全检查：确保对象仍然有效且未销毁
+  if (ob->interactive && (ob->interactive->iflags & GATEWAY_SESSION)) {
+    extern void gateway_session_exec_update(object_t* new_ob, object_t* old_ob);
+    gateway_session_exec_update(ob, obfrom);
   }
 
   free_object(&obfrom, "exec");

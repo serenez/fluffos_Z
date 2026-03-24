@@ -27,6 +27,7 @@
 #include "vm/internal/master.h"
 #include "vm/internal/otable.h"
 #include "vm/internal/simul_efun.h"
+#include "compiler/internal/compiler.h"
 #include "compiler/internal/lex.h"  // for total_lines, FIXME
 
 #include "packages/core/add_action.h"
@@ -1754,13 +1755,68 @@ static void add_message_with_location(char *err) {
   }
 }
 
+namespace {
+std::string query_load_failure_target_from_error(const char *err) {
+  constexpr char kPrefix[] = "*Error in loading object '/";
+
+  if (err == nullptr) {
+    return {};
+  }
+
+  auto *start = strstr(err, kPrefix);
+  if (start == nullptr) {
+    return {};
+  }
+  start += sizeof(kPrefix) - 1;
+
+  auto *end = strchr(start, '\'');
+  if (end == nullptr || end <= start) {
+    return {};
+  }
+
+  return "/" + std::string(start, static_cast<std::string::size_type>(end - start));
+}
+
+void append_compile_diagnostic(mapping_t *m, const char *err) {
+  compile_diagnostic_snapshot_t snapshot;
+  auto load_target = query_load_failure_target_from_error(err);
+
+  if (load_target.empty() || !take_last_compile_diagnostic(&snapshot)) {
+    return;
+  }
+
+  auto compile_target =
+      snapshot.object_name.empty() ? load_target : snapshot.object_name;
+
+  add_mapping_string(m, "compile_error_object", compile_target.c_str());
+  if (!snapshot.file.empty()) {
+    add_mapping_string(m, "compile_error_file", snapshot.file.c_str());
+  }
+  if (snapshot.line > 0) {
+    add_mapping_pair(m, "compile_error_line", snapshot.line);
+  }
+  if (snapshot.column > 0) {
+    add_mapping_pair(m, "compile_error_column", snapshot.column);
+  }
+  if (!snapshot.message.empty()) {
+    add_mapping_string(m, "compile_error_message", snapshot.message.c_str());
+  }
+  if (!snapshot.source_line.empty()) {
+    add_mapping_string(m, "compile_error_source", snapshot.source_line.c_str());
+  }
+  if (!snapshot.caret_line.empty()) {
+    add_mapping_string(m, "compile_error_caret", snapshot.caret_line.c_str());
+  }
+}
+}  // namespace
+
 static void mudlib_error_handler(char *err, int katch) {
   mapping_t *m;
   const char *file = nullptr;
   int line = 0;
   svalue_t *mret;
 
-  m = allocate_mapping(6);
+  m = allocate_mapping(13);
   add_mapping_string(m, "error", err);
   if (current_prog) {
     add_mapping_malloced_string(m, "program", add_slash(current_prog->filename));
@@ -1778,6 +1834,7 @@ static void mudlib_error_handler(char *err, int katch) {
   if (line) {
     add_mapping_pair(m, "line", line);
   }
+  append_compile_diagnostic(m, err);
 
   push_refed_mapping(m);
   if (katch) {

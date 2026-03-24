@@ -2,9 +2,9 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
-#define PROJECT_VERSION "@PROJECT_NAME@ @PROJECT_VERSION@"
+#define PROJECT_VERSION "Fluffos-Driver V3.1.2 (Buyi)"
 #define COMPILER "@CMAKE_CXX_COMPILER@"
-#define CXXFLAGS "Broken"
+#define CXXFLAGS "@CONFIGURED_CXXFLAGS_ESCAPED@"
 
 // Features
 #cmakedefine DEBUG

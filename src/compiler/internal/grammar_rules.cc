@@ -13,6 +13,41 @@
 extern int context;       // FIXME
 extern int func_present;  // FIXME
 
+namespace {
+struct diagnostic_override_guard_t {
+  int override_id;
+
+  explicit diagnostic_override_guard_t(int id) : override_id(id) {}
+
+  ~diagnostic_override_guard_t() {
+    if (override_id != -1) {
+      pop_diagnostic_override(override_id);
+    }
+  }
+};
+
+struct diagnostic_anchor_guard_t {
+  int anchor_id;
+
+  explicit diagnostic_anchor_guard_t(int id) : anchor_id(id) {}
+
+  ~diagnostic_anchor_guard_t() {
+    if (anchor_id != -1) {
+      pop_diagnostic_anchor(anchor_id);
+    }
+  }
+};
+
+int push_anchor_diagnostic_override(int diagnostic_anchor_id, const char *symbol = nullptr) {
+  auto location = query_diagnostic_anchor(diagnostic_anchor_id);
+  if (location.file == nullptr || location.line <= 0) {
+    return -1;
+  }
+  location = align_error_location_to_symbol(std::move(location), symbol);
+  return push_diagnostic_override(std::move(location));
+}
+}  // namespace
+
 void rule_program(parse_node_t *$$) { comp_trees[TREE_MAIN] = $$; }
 
 bool rule_inheritence(parse_node_t **$$, int $1, char *$3) {
@@ -99,7 +134,10 @@ bool rule_inheritence(parse_node_t **$$, int $1, char *$3) {
   return false;
 }
 
-LPC_INT rule_func_type(LPC_INT type, LPC_INT optional_star, char *identifier) {
+LPC_INT rule_func_type(LPC_INT type, LPC_INT optional_star, char *identifier,
+                       int diagnostic_anchor_id) {
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, identifier));
   int flags;
 #ifdef SENSIBLE_MODIFIERS
   int acc_mod;
@@ -151,7 +189,10 @@ LPC_INT rule_func_type(LPC_INT type, LPC_INT optional_star, char *identifier) {
   return type;
 }
 
-LPC_INT rule_func_proto(LPC_INT type, LPC_INT optional_star, char **identifier, argument_t argument) {
+LPC_INT rule_func_proto(LPC_INT type, LPC_INT optional_star, char **identifier,
+                        argument_t argument, int diagnostic_anchor_id) {
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, *identifier));
   char *p = *identifier;
   *identifier = (char *)make_shared_string(*identifier);
   scratch_free(p);
@@ -170,7 +211,8 @@ LPC_INT rule_func_proto(LPC_INT type, LPC_INT optional_star, char **identifier, 
   }
   func_types |= (type >> 16);
 
-  define_new_function(*identifier, argument.num_arg, 0, func_types, (type & 0xffff) | optional_star);
+  define_new_function(*identifier, argument.num_arg, 0, func_types,
+                      (type & 0xffff) | optional_star, diagnostic_anchor_id);
   /* This is safe since it is guaranteed to be in the
      function table, so it can't be dangling */
   free_string(*identifier);
@@ -179,8 +221,12 @@ LPC_INT rule_func_proto(LPC_INT type, LPC_INT optional_star, char **identifier, 
   return func_types;
 }
 
-void rule_func(parse_node_t **function, LPC_INT type, LPC_INT optional_star, char *identifier, argument_t argument, LPC_INT *func_types,
-               parse_node_t **block_or_semi) {
+void rule_func(parse_node_t **function, LPC_INT type, LPC_INT optional_star, char *identifier,
+               argument_t argument, LPC_INT *func_types, parse_node_t **block_or_semi,
+               int diagnostic_anchor_id) {
+  diagnostic_anchor_guard_t diagnostic_anchor_guard(diagnostic_anchor_id);
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, identifier));
   /* Either a prototype or a block */
   if (*block_or_semi) {
     int fun;
@@ -195,7 +241,9 @@ void rule_func(parse_node_t **function, LPC_INT type, LPC_INT optional_star, cha
     }
 
     // Creating functions for argument defaults
-    fun = define_new_function(identifier, argument.num_arg, max_num_locals - argument.num_arg, *func_types, (type & 0xffff) | optional_star);
+    fun = define_new_function(identifier, argument.num_arg,
+                              max_num_locals - argument.num_arg, *func_types,
+                              (type & 0xffff) | optional_star, diagnostic_anchor_id);
     if (fun != -1) {
       *function = new_node_no_line();
       (*function)->kind = NODE_FUNCTION;
@@ -254,7 +302,9 @@ void rule_func(parse_node_t **function, LPC_INT type, LPC_INT optional_star, cha
   free_all_local_names(!!(*block_or_semi));
 }
 
-ident_hash_elem_t *rule_define_class(LPC_INT *$$, char *$3) {
+ident_hash_elem_t *rule_define_class(LPC_INT *$$, char *$3, int diagnostic_anchor_id) {
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, $3));
   ident_hash_elem_t *ihe;
 
   ihe = find_or_add_ident(PROG_STRING(*$$ = store_prog_string($3)), FOA_GLOBAL_SCOPE);
@@ -272,7 +322,11 @@ ident_hash_elem_t *rule_define_class(LPC_INT *$$, char *$3) {
   }
 }
 
-void rule_define_class_members(struct ident_hash_elem_t *$2, LPC_INT $5) {
+void rule_define_class_members(struct ident_hash_elem_t *$2, LPC_INT $5,
+                               int diagnostic_anchor_id) {
+  diagnostic_anchor_guard_t diagnostic_anchor_guard(diagnostic_anchor_id);
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, PROG_STRING($5)));
   class_def_t *sd;
   class_member_entry_t *sme;
   int i, raise_error = 0;

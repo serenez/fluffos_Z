@@ -298,15 +298,17 @@ int external_start(int which, svalue_t *args, svalue_t *arg1, svalue_t *arg2, sv
     error("CreateProcess() in external_start() failed: %s\n", strerror(errno));
     return EESOCKET;
   }
-  debug(external_start, "external_start: Launching external command '%s', pid: %d.\n", cmdline.c_str(),
-                processInfo.dwProcessId);
+  debug(external_start, "external_start: Launching external command '%s', pid: %lu.\n",
+        cmdline.c_str(), static_cast<unsigned long>(processInfo.dwProcessId));
 
   std::thread([=]() {
     WaitForSingleObject(processInfo.hProcess, INFINITE);
     DWORD exitCode = -1;
     // Get the exit code.
     GetExitCodeProcess(processInfo.hProcess, &exitCode);
-    debug(external_start, "external_start: pid: %d exited with %d.\n", processInfo.dwProcessId, exitCode);
+    debug(external_start, "external_start: pid: %lu exited with %lu.\n",
+          static_cast<unsigned long>(processInfo.dwProcessId),
+          static_cast<unsigned long>(exitCode));
     CloseHandle(processInfo.hProcess);
     CloseHandle(processInfo.hThread);
     evutil_closesocket(sv[0]);

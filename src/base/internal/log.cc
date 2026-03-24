@@ -5,8 +5,12 @@
 #include <cstring>
 #include <cerrno>
 #include <deque>
-#include <vector>
 #include <memory>
+#include <string>
+#include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "rc.h"  // for CONFIG_*
 
@@ -23,6 +27,37 @@ const int sizeof_levels = (sizeof(levels) / sizeof(levels[0]));
 namespace {
 FILE *debug_message_fp = nullptr;
 std::deque<std::unique_ptr<std::vector<char>>> pending_messages;
+
+#ifdef _WIN32
+bool write_utf8_to_stdout(const char *text) {
+  auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (handle == INVALID_HANDLE_VALUE || handle == nullptr) {
+    return false;
+  }
+
+  DWORD mode = 0;
+  if (!GetConsoleMode(handle, &mode)) {
+    return false;
+  }
+
+  int const wide_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
+  if (wide_len <= 0) {
+    return false;
+  }
+
+  std::wstring wide_text(static_cast<size_t>(wide_len), L'\0');
+  auto converted =
+      MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide_text.data(), wide_len);
+  if (converted <= 0) {
+    return false;
+  }
+
+  DWORD written = 0;
+  return WriteConsoleW(handle, wide_text.c_str(), static_cast<DWORD>(wide_text.size() - 1),
+                       &written,
+                       nullptr) != 0;
+}
+#endif
 }  // namespace
 
 void reset_debug_message_fp() {
@@ -75,7 +110,13 @@ void debug_message(const char *fmt, ...) {
   va_end(args2);
 
   // Always output to stdout first
-  fputs(result->data(), stdout);
+  bool wrote_to_console = false;
+#ifdef _WIN32
+  wrote_to_console = write_utf8_to_stdout(result->data());
+#endif
+  if (!wrote_to_console) {
+    fputs(result->data(), stdout);
+  }
   fflush(stdout);
 
   // try to put into log directly, if available

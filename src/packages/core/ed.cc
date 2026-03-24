@@ -1507,6 +1507,8 @@ static void shift(char *text) {
 #define XDO 13
 #define XEOT 14
 
+static char indent_stack_storage[STACKSZ];
+static int indent_level_storage[STACKSZ];
 static char *stack, *stackbot;                        /* token stack */
 static int *ind, *indbot;                             /* indent stack */
 static char quote;                                    /* ' or " */
@@ -1873,13 +1875,11 @@ static void indent(char *buf) {
 }
 
 static int indent_code() {
-  char s[STACKSZ];
-  int i[STACKSZ];
   int last;
 
   /* setup stacks */
-  stackbot = s;
-  indbot = i;
+  stackbot = indent_stack_storage;
+  indbot = indent_level_storage;
   stack = stackbot + STACKSZ - 1;
   *stack = XEOT;
   ind = indbot + STACKSZ - 1;

@@ -2,6 +2,7 @@
 
 #include "scratchpad.h"
 
+#include <cstring>
 #include <cstdlib>
 
 // FIXME: figure out where this is
@@ -53,13 +54,34 @@ extern void yywarn(const char *, ...);
 #define S2 ((unsigned char *)s2)
 #define Scratch_large_alloc(x) ((unsigned char *)scratch_large_alloc(x))
 #define Strlen(x) (strlen((char *)x))
-#define Strcpy(x, y) (strcpy((char *)x, (char *)y))
-#define Strncpy(x, y, z) (strncpy((char *)x, (char *)y, z))
 
-/* not strictly ANSI, but should always work ... */
-#define HDR_SIZE ((char *)&scratch_head.block[2] - (char *)&scratch_head)
-#define FIND_HDR(x) ((sp_block_t *)(x - HDR_SIZE))
-#define SIZE_WITH_HDR(x) (x + HDR_SIZE)
+namespace {
+
+constexpr size_t kScratchPrefixSize = 2;
+constexpr size_t kScratchBlockHeaderSize = sizeof(sp_block_t) + kScratchPrefixSize;
+
+inline unsigned char *scratch_block_prefix(sp_block_t *block) {
+  return reinterpret_cast<unsigned char *>(block) + sizeof(sp_block_t);
+}
+
+inline char *scratch_block_payload(sp_block_t *block) {
+  return reinterpret_cast<char *>(scratch_block_prefix(block) + kScratchPrefixSize);
+}
+
+inline sp_block_t *scratch_block_from_payload(const char *ptr) {
+  return reinterpret_cast<sp_block_t *>(const_cast<unsigned char *>(
+      reinterpret_cast<const unsigned char *>(ptr) - kScratchBlockHeaderSize));
+}
+
+inline size_t scratch_block_allocation_size(int payload_size) {
+  return kScratchBlockHeaderSize + payload_size;
+}
+
+inline void copy_c_string(char *dest, const char *src) {
+  std::memcpy(dest, src, std::strlen(src) + 1);
+}
+
+}  // namespace
 
 static unsigned char scratchblock[SCRATCHPAD_SIZE];
 static sp_block_t scratch_head = {nullptr, nullptr};
@@ -133,7 +155,7 @@ char *scratch_copy(const char *str) {
 
   /* ACK! no room. strlen(str) == (from - str) + strlen(from) */
   to = Scratch_large_alloc((from - Str) + Strlen(from) + 1);
-  Strcpy(to, str);
+  copy_c_string(reinterpret_cast<char *>(to), str);
   return reinterpret_cast<char *>(to);
 }
 
@@ -153,7 +175,7 @@ void scratch_free(char *ptr) {
 
     DEBUG_CHECK(*(Ptr - 2) != SCRATCH_MAGIC, "scratch_free called on non-scratchpad string.\n");
     SDEBUG(printf("block freed\n"));
-    sbt = FIND_HDR(ptr);
+    sbt = scratch_block_from_payload(ptr);
     if (sbt->prev) {
       sbt->prev->next = sbt->next;
     }
@@ -172,14 +194,17 @@ char *scratch_large_alloc(int size) {
 
   SDEBUG(printf("scratch_large_alloc(%i)\n", size));
 
-  spt = reinterpret_cast<sp_block_t *>(DMALLOC(SIZE_WITH_HDR(size), TAG_COMPILER, "scratch_alloc"));
+  spt = reinterpret_cast<sp_block_t *>(
+      DMALLOC(scratch_block_allocation_size(size), TAG_COMPILER, "scratch_alloc"));
   if ((spt->next = scratch_head.next)) {
     spt->next->prev = spt;
   }
   spt->prev = &scratch_head;
-  spt->block[0] = SCRATCH_MAGIC;
+  auto *prefix = scratch_block_prefix(spt);
+  prefix[0] = SCRATCH_MAGIC;
+  prefix[1] = 0;
   scratch_head.next = spt;
-  return &spt->block[2];
+  return scratch_block_payload(spt);
 }
 
 /* warning: unlike REALLOC(), this one only allows increases */
@@ -196,7 +221,7 @@ char *scratch_realloc(char *ptr, int size) {
       char *res;
       SDEBUG(printf("copy off ... "));
       res = scratch_large_alloc(size);
-      strcpy(res, ptr);
+      copy_c_string(res, ptr);
       scratch_free_last();
       return res;
     }
@@ -205,14 +230,17 @@ char *scratch_realloc(char *ptr, int size) {
 
     DEBUG_CHECK(*(Ptr - 2) != SCRATCH_MAGIC, "scratch_realloc on non-scratchpad string.\n");
     SDEBUG(printf("block\n"));
-    sbt = FIND_HDR(ptr);
+    sbt = scratch_block_from_payload(ptr);
     newsbt = reinterpret_cast<sp_block_t *>(
-        DREALLOC(sbt, SIZE_WITH_HDR(size), TAG_COMPILER, "scratch_realloc"));
+        DREALLOC(sbt, scratch_block_allocation_size(size), TAG_COMPILER, "scratch_realloc"));
     newsbt->prev->next = newsbt;
     if (newsbt->next) {
       newsbt->next->prev = newsbt;
     }
-    return &newsbt->block[2];
+    auto *prefix = scratch_block_prefix(newsbt);
+    prefix[0] = SCRATCH_MAGIC;
+    prefix[1] = 0;
+    return scratch_block_payload(newsbt);
   } else {
     char *res;
 
@@ -221,14 +249,14 @@ char *scratch_realloc(char *ptr, int size) {
     if (size < 256 && (scr_tail + size + 1) < scratch_end) {
       SDEBUG(printf("move to end\n"));
       scr_last = scr_tail + 1;
-      Strcpy(scr_last, ptr);
+      copy_c_string(reinterpret_cast<char *>(scr_last), ptr);
       scr_tail = scr_last + size;
       *scr_tail = size;
       res = reinterpret_cast<char *>(scr_last);
     } else {
       SDEBUG(printf("copy off ... "));
       res = scratch_large_alloc(size);
-      strcpy(res, ptr);
+      copy_c_string(res, ptr);
     }
     *ptr = 0; /* free the old version */
     return res;
@@ -262,7 +290,7 @@ char *scratch_join(char *s1, char *s2) {
                 "argument 2 to scratch_join was not a scratchpad string.\n");
 
     res = scratch_realloc(s1, l + strlen(s2) + 1);
-    strcpy(res + l, s2);
+    copy_c_string(res + l, s2);
     scratch_free(s2);
     return res;
   } else {
@@ -283,8 +311,8 @@ char *scratch_join(char *s1, char *s2) {
       return s1;
     } else {
       char *ret = scratch_large_alloc(tmp);
-      strcpy(ret, s1);
-      strcpy(ret + (scr_last - S1) - 2, s2);
+      copy_c_string(ret, s1);
+      copy_c_string(ret + (scr_last - S1) - 2, s2);
       scratch_free(s1);
       scratch_free(s2);
       return ret;
@@ -332,7 +360,7 @@ char *scratch_copy_string(const char *s) {
       *to++ = 0;
       if (!l && (to == scratch_end)) {
         res = scratch_large_alloc(to - scr_tail - 1);
-        Strcpy(res, scr_tail + 1);
+        copy_c_string(res, reinterpret_cast<char *>(scr_tail + 1));
         return res;
       }
       scr_last = scr_tail + 1;
@@ -346,7 +374,7 @@ char *scratch_copy_string(const char *s) {
   /* estimate the length we need */
   /* Note that the last char is we read is ", not \0 - Sym */
   res = scratch_large_alloc(to - scr_tail + strlen(s) - 1);
-  Strncpy(res, (scr_tail + 1), (to - scr_tail) - 1);
+  std::memcpy(res, scr_tail + 1, (to - scr_tail) - 1);
   to = Res + (to - scr_tail) - 1;
   for (;;) {
     if (*s == '\\') {

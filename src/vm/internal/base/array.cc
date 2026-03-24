@@ -3,6 +3,7 @@
 #include "vm/internal/base/machine.h"
 
 #include <stdlib.h>  // for qsort
+#include <vector>
 
 #include "vm/internal/apply.h"
 #include "vm/internal/simulate.h"
@@ -1915,28 +1916,25 @@ array_t *union_array(array_t *a1, array_t *a2) {
  */
 array_t *deep_inherit_list(object_t *ob) {
   array_t *ret;
-  program_t *pr, *plist[256];
-  int il, il2, next, cur;
+  program_t *pr;
+  std::vector<program_t *> plist;
 
-  plist[0] = ob->prog;
-  next = 1;
-  cur = 0;
+  plist.push_back(ob->prog);
 
-  for (; cur < next && next < 256; cur++) {
+  for (size_t cur = 0; cur < plist.size(); cur++) {
     pr = plist[cur];
-    for (il2 = 0; il2 < pr->num_inherited && next < 256; il2++) {
-      plist[next++] = pr->inherit[il2].prog;
+    for (int il2 = 0; il2 < pr->num_inherited; il2++) {
+      plist.push_back(pr->inherit[il2].prog);
     }
   }
 
-  next--;
-  ret = allocate_empty_array(next);
+  ret = allocate_empty_array(static_cast<int>(plist.size()) - 1);
 
-  for (il = 0; il < next; il++) {
-    pr = plist[il + 1];
-    ret->item[il].type = T_STRING;
-    ret->item[il].subtype = STRING_MALLOC;
-    ret->item[il].u.string = add_slash(pr->filename);
+  for (size_t il = 1; il < plist.size(); il++) {
+    pr = plist[il];
+    ret->item[il - 1].type = T_STRING;
+    ret->item[il - 1].subtype = STRING_MALLOC;
+    ret->item[il - 1].u.string = add_slash(pr->filename);
   }
   return ret;
 }
@@ -1947,26 +1945,14 @@ array_t *deep_inherit_list(object_t *ob) {
  */
 array_t *inherit_list(object_t *ob) {
   array_t *ret;
-  program_t *pr, *plist[256];
-  int il, il2, next, cur;
+  program_t *pr = ob->prog;
+  ret = allocate_empty_array(pr->num_inherited);
 
-  plist[0] = ob->prog;
-  next = 1;
-  cur = 0;
-
-  pr = plist[cur];
-  for (il2 = 0; il2 < pr->num_inherited; il2++) {
-    plist[next++] = pr->inherit[il2].prog;
-  }
-
-  next--; /* don't count the file itself */
-  ret = allocate_empty_array(next);
-
-  for (il = 0; il < next; il++) {
-    pr = plist[il + 1];
+  for (int il = 0; il < pr->num_inherited; il++) {
+    auto *inherited_program = pr->inherit[il].prog;
     ret->item[il].type = T_STRING;
     ret->item[il].subtype = STRING_MALLOC;
-    ret->item[il].u.string = add_slash(pr->filename);
+    ret->item[il].u.string = add_slash(inherited_program->filename);
   }
   return ret;
 }

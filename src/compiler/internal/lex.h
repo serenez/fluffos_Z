@@ -3,6 +3,8 @@
 
 #include "compiler/internal/LexStream.h"
 
+#include <string>
+
 #define DEFMAX 65536  // at least 4 times MAXLINE
 #define MAXLINE 4096
 #define MLEN 4096
@@ -94,6 +96,15 @@ typedef struct {
   int arg_index;
 } instr_t;
 
+typedef struct {
+  const char *file;
+  int file_id;
+  int line;
+  int column;
+  int end_column;
+  std::string line_text;
+} compiler_error_location_t;
+
 /*
  * lex.c
  */
@@ -133,6 +144,17 @@ ident_hash_elem_t *lookup_ident(const char *);
 void free_unused_identifiers(void);
 void init_identifiers(void);
 char *show_error_context(void);
+compiler_error_location_t query_syntax_error_location(void);
+compiler_error_location_t query_last_non_eof_token_location(void);
+compiler_error_location_t query_previous_non_eof_token_location(void);
+compiler_error_location_t align_error_location_to_symbol(compiler_error_location_t, const char *);
+compiler_error_location_t query_symbol_anchor_before_current_location(const char *);
+int push_diagnostic_anchor(compiler_error_location_t);
+compiler_error_location_t query_diagnostic_anchor(int);
+compiler_error_location_t pop_diagnostic_anchor(int);
+int push_diagnostic_override(compiler_error_location_t);
+void pop_diagnostic_override(int);
+compiler_error_location_t query_current_diagnostic_override(void);
 #ifdef DEBUGMALLOC_EXTENSIONS
 void mark_all_defines(void);
 #endif

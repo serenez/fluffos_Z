@@ -18,6 +18,7 @@
 #include "scratchpad.h"
 #include "symbol.h"
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "vm/internal/base/machine.h"  // for error(), FIXME
@@ -25,6 +26,106 @@
 #ifdef PACKAGE_MUDLIB_STATS
 #include "packages/mudlib_stats/mudlib_stats.h"
 #endif
+
+static void semantic_yyerror(const char *fmt, ...);
+static void semantic_yywarn(const char *fmt, ...);
+static void semantic_yyerror_named(const char *symbol, const char *fmt, ...);
+static void semantic_yywarn_named(const char *symbol, const char *fmt, ...);
+
+namespace {
+compile_diagnostic_snapshot_t g_last_compile_diagnostic = {};
+std::unordered_map<const parse_node_t *, compiler_error_location_t> g_parse_node_diagnostic_locations;
+
+std::string trim_trailing_newlines(std::string value) {
+  while (!value.empty() && (value.back() == '\n' || value.back() == '\r')) {
+    value.pop_back();
+  }
+  return value;
+}
+
+std::string strip_log_context_padding(std::string value) {
+  if (value.size() >= 2 && value[0] == ' ' && value[1] == ' ') {
+    value.erase(0, 2);
+  }
+  return value;
+}
+
+std::string normalize_driver_path(const char *file) {
+  if (file == nullptr || *file == '\0') {
+    return {};
+  }
+
+  std::string path = file;
+  if (path.front() != '/') {
+    path.insert(path.begin(), '/');
+  }
+  return path;
+}
+
+std::string normalize_object_name(const char *file) {
+  auto object_name = normalize_driver_path(file);
+  if (object_name.size() >= 2 &&
+      object_name.compare(object_name.size() - 2, 2, ".c") == 0) {
+    object_name.erase(object_name.size() - 2);
+  }
+  return object_name;
+}
+
+int find_caret_column(const std::string &caret_line) {
+  auto caret = caret_line.find('^');
+  if (caret == std::string::npos) {
+    return 0;
+  }
+  return static_cast<int>(caret) + 1;
+}
+
+void cache_compile_diagnostic(const char *error_file, int line, const char *what, int flag,
+                              const std::vector<std::string> &logs) {
+  if (flag || g_last_compile_diagnostic.valid) {
+    return;
+  }
+
+  g_last_compile_diagnostic = {};
+  g_last_compile_diagnostic.valid = true;
+  g_last_compile_diagnostic.object_name = normalize_object_name(main_file_name());
+  g_last_compile_diagnostic.file = normalize_driver_path(error_file);
+  g_last_compile_diagnostic.line = line;
+  g_last_compile_diagnostic.message = what ? what : "";
+  if (logs.size() > 1) {
+    g_last_compile_diagnostic.source_line =
+        strip_log_context_padding(trim_trailing_newlines(logs[1]));
+  }
+  if (logs.size() > 2) {
+    g_last_compile_diagnostic.caret_line =
+        strip_log_context_padding(trim_trailing_newlines(logs[2]));
+    g_last_compile_diagnostic.column = find_caret_column(g_last_compile_diagnostic.caret_line);
+  }
+}
+}  // namespace
+
+void remember_parse_node_diagnostic_location(parse_node_t *node, compiler_error_location_t location) {
+  if (node == nullptr || location.file == nullptr || location.line <= 0) {
+    return;
+  }
+  g_parse_node_diagnostic_locations[node] = std::move(location);
+}
+
+compiler_error_location_t query_parse_node_diagnostic_location(parse_node_t *node) {
+  if (node == nullptr) {
+    return compiler_error_location_t{nullptr, 0, 0, 0, 0, ""};
+  }
+
+  auto it = g_parse_node_diagnostic_locations.find(node);
+  if (it == g_parse_node_diagnostic_locations.end()) {
+    return compiler_error_location_t{nullptr, 0, 0, 0, 0, ""};
+  }
+  return it->second;
+}
+
+void clear_parse_node_diagnostic_locations(void) { g_parse_node_diagnostic_locations.clear(); }
+
+#define yyerror semantic_yyerror
+#define yywarn semantic_yywarn
 
 // Align to pointer-size boundary, this will work fine for both x86 & x86_64, because we don't use
 // long double (16-bytes).
@@ -110,6 +211,17 @@ short freed_string;
 
 /* x_ptr is different inside nested functions */
 unsigned short *type_of_locals, *type_of_locals_ptr;
+
+void clear_last_compile_diagnostic(void) { g_last_compile_diagnostic = {}; }
+
+bool take_last_compile_diagnostic(compile_diagnostic_snapshot_t *snapshot) {
+  auto has_snapshot = g_last_compile_diagnostic.valid;
+  if (has_snapshot && snapshot != nullptr) {
+    *snapshot = g_last_compile_diagnostic;
+  }
+  g_last_compile_diagnostic = {};
+  return has_snapshot;
+}
 local_info_t *locals, *locals_ptr;
 
 int locals_size = 0;
@@ -126,6 +238,79 @@ char *get_two_types(char *where, char *end, int type1, int type2) {
   where = strput(where, end, ")");
 
   return where;
+}
+
+static compiler_error_location_t capture_declaration_location() {
+  auto location = query_previous_non_eof_token_location();
+  if (location.file == nullptr || location.line <= 0) {
+    location = query_last_non_eof_token_location();
+  }
+  return location;
+}
+
+static compiler_error_location_t capture_grammar_diagnostic_location() {
+  auto location = query_previous_non_eof_token_location();
+  if (location.file == nullptr || location.line <= 0) {
+    location = query_last_non_eof_token_location();
+  }
+  return location;
+}
+
+static compiler_error_location_t capture_semantic_diagnostic_location(const char *symbol = nullptr) {
+  auto location = query_current_diagnostic_override();
+  if (location.file == nullptr || location.line <= 0) {
+    location = capture_grammar_diagnostic_location();
+  }
+  if (symbol != nullptr && *symbol != '\0' && location.file != nullptr && location.line > 0) {
+    location = align_error_location_to_symbol(std::move(location), symbol);
+  }
+  return location;
+}
+
+static int push_anchor_diagnostic_override(int diagnostic_anchor_id, const char *symbol = nullptr) {
+  auto location = query_diagnostic_anchor(diagnostic_anchor_id);
+  if (location.file == nullptr || location.line <= 0) {
+    return -1;
+  }
+  location = align_error_location_to_symbol(std::move(location), symbol);
+  return push_diagnostic_override(std::move(location));
+}
+
+struct diagnostic_override_guard_t {
+  int override_id;
+
+  explicit diagnostic_override_guard_t(int id) : override_id(id) {}
+
+  ~diagnostic_override_guard_t() {
+    if (override_id != -1) {
+      pop_diagnostic_override(override_id);
+    }
+  }
+};
+
+static compiler_error_location_t *clone_diagnostic_location(const compiler_error_location_t &location) {
+  if (location.file == nullptr || location.line <= 0) {
+    return nullptr;
+  }
+  return new compiler_error_location_t(location);
+}
+
+static void release_local_declaration_location(local_info_t *info) {
+  if (info->declaration_location != nullptr) {
+    delete info->declaration_location;
+    info->declaration_location = nullptr;
+  }
+}
+
+static void warn_unused_local(local_info_t *info) {
+  if (info->suppress_unused_warning) {
+    return;
+  }
+  if (info->declaration_location != nullptr) {
+    yywarn_at(*info->declaration_location, "Unused local variable '%s'", info->ihe->name);
+  } else {
+    yywarn("Unused local variable '%s'", info->ihe->name);
+  }
 }
 
 void init_locals() {
@@ -146,10 +331,11 @@ void free_all_local_names(int flag) {
 
   for (i = 0; i < current_number_of_locals; i++) {
     if (flag && (type_of_locals_ptr[locals_ptr[i].runtime_index] & LOCAL_MOD_UNUSED)) {
-      yywarn("Unused local variable '%s'", locals_ptr[i].ihe->name);
+      warn_unused_local(&locals_ptr[i]);
     }
     locals_ptr[i].ihe->sem_value--;
     locals_ptr[i].ihe->dn.local_num = -1;
+    release_local_declaration_location(&locals_ptr[i]);
   }
   current_number_of_locals = 0;
   max_num_locals = 0;
@@ -180,6 +366,7 @@ void clean_up_locals() {
   while (offset--) {
     locals[offset].ihe->sem_value--;
     locals[offset].ihe->dn.local_num = -1;
+    release_local_declaration_location(&locals[offset]);
   }
   current_number_of_locals = 0;
   max_num_locals = 0;
@@ -202,16 +389,18 @@ void pop_n_locals(int num) {
   i1 = num;
   while (i1--) {
     if (type_of_locals_ptr[ltype_start] & LOCAL_MOD_UNUSED) {
-      yywarn("Unused local variable '%s'", locals_ptr[lcur_start].ihe->name);
+      warn_unused_local(&locals_ptr[lcur_start]);
     }
     locals_ptr[lcur_start].ihe->sem_value--;
     locals_ptr[lcur_start].ihe->dn.local_num = -1;
+    release_local_declaration_location(&locals_ptr[lcur_start]);
     ++lcur_start;
     ++ltype_start;
   }
 }
 
-int add_local_name(const char *str, int type, parse_node_t* optional_default_arg_value) {
+int add_local_name(const char *str, int type, parse_node_t* optional_default_arg_value,
+                   int diagnostic_anchor_id, bool suppress_unused_warning) {
   auto max_local_variables = CFG_INT(__MAX_LOCAL_VARIABLES__);
 
   if (max_num_locals == max_local_variables) {
@@ -224,9 +413,16 @@ int add_local_name(const char *str, int type, parse_node_t* optional_default_arg
   ihe = find_or_add_ident(str, FOA_NEEDS_MALLOC);
   type_of_locals_ptr[max_num_locals] = type;
   auto idx = current_number_of_locals++;
+  release_local_declaration_location(&locals_ptr[idx]);
   locals_ptr[idx].ihe = ihe;
   locals_ptr[idx].funcptr_default = optional_default_arg_value;
   locals_ptr[idx].runtime_index = max_num_locals;
+  locals_ptr[idx].suppress_unused_warning = suppress_unused_warning;
+  auto declaration_location = pop_diagnostic_anchor(diagnostic_anchor_id);
+  if (declaration_location.file == nullptr || declaration_location.line <= 0) {
+    declaration_location = capture_declaration_location();
+  }
+  locals_ptr[idx].declaration_location = clone_diagnostic_location(declaration_location);
   if (ihe->dn.local_num == -1) {
     ihe->sem_value++;
   }
@@ -237,12 +433,20 @@ void reallocate_locals() {
   auto max_local_variables = CFG_INT(__MAX_LOCAL_VARIABLES__);
 
   int offset;
+  auto old_type_size = type_of_locals_size;
+  auto old_locals_size = locals_size;
+  auto new_size =
+      (locals_size > type_of_locals_size ? locals_size : type_of_locals_size) + max_local_variables;
   offset = type_of_locals_ptr - type_of_locals;
-  type_of_locals = RESIZE(type_of_locals, type_of_locals_size += max_local_variables,
-                          unsigned short, TAG_LOCALS, "reallocate_locals:1");
+  type_of_locals =
+      RESIZE(type_of_locals, new_size, unsigned short, TAG_LOCALS, "reallocate_locals:1");
+  memset(type_of_locals + old_type_size, 0, (new_size - old_type_size) * sizeof(*type_of_locals));
+  type_of_locals_size = new_size;
   type_of_locals_ptr = type_of_locals + offset;
   offset = locals_ptr - locals;
-  locals = RESIZE(locals, locals_size, local_info_t, TAG_LOCALS, "reallocate_locals:2");
+  locals = RESIZE(locals, new_size, local_info_t, TAG_LOCALS, "reallocate_locals:2");
+  memset(locals + old_locals_size, 0, (new_size - old_locals_size) * sizeof(*locals));
+  locals_size = new_size;
   locals_ptr = locals + offset;
 }
 
@@ -397,14 +601,16 @@ int lookup_any_class_member(char *name, unsigned short *type) {
         continue;
       }
       if (ret != -1 && nret != ret) {
-        yyerror("More than one class in scope has member '%s'; use a cast to disambiguate.", name);
+        semantic_yyerror_named(name,
+                               "More than one class in scope has member '%s'; use a cast to disambiguate.",
+                               name);
       }
       ret = nret;
     }
   }
 
   if (ret == -1) {
-    yyerror("No class in scope has no member '%s'.", name);
+    semantic_yyerror_named(name, "No class in scope has no member '%s'.", name);
   }
 
   return ret;
@@ -422,7 +628,8 @@ int lookup_class_member(int which, char *name, unsigned short *type) {
 
   if (ret == -1) {
     class_def_t *cd = (reinterpret_cast<class_def_t *>(mem_block[A_CLASS_DEF].block)) + which;
-    yyerror("Class '%s' has no member '%s'", PROG_STRING(cd->classname), name);
+    semantic_yyerror_named(name, "Class '%s' has no member '%s'", PROG_STRING(cd->classname),
+                           name);
   }
   return ret;
 }
@@ -444,8 +651,9 @@ parse_node_t *reorder_class_values(int which, parse_node_t *node) {
     i = lookup_class_member(which, reinterpret_cast<char *>(node->l.expr), nullptr);
     if (i != -1) {
       if (tmp[i]) {
-        yyerror("Redefinition of member '%s' in instantiation of class '%s'",
-                reinterpret_cast<char *>(node->l.expr), PROG_STRING(cd->classname));
+        semantic_yyerror_named(reinterpret_cast<char *>(node->l.expr),
+                               "Redefinition of member '%s' in instantiation of class '%s'",
+                               reinterpret_cast<char *>(node->l.expr), PROG_STRING(cd->classname));
       } else {
         tmp[i] = node->v.expr;
       }
@@ -481,7 +689,7 @@ static void check_class(char *name, const program_t *prog, int idx, int nidx) {
 
   n = sd1->size;
   if (sd1->size != sd2->size) {
-    yyerror("Definitions of class '%s' differ in size.", name);
+    semantic_yyerror_named(name, "Definitions of class '%s' differ in size.", name);
     return;
   }
 
@@ -497,7 +705,7 @@ static void check_class(char *name, const program_t *prog, int idx, int nidx) {
 
     if (sme2[i].type != newtype ||
         prog->strings[sme1[i].membername] != PROG_STRING(sme2[i].membername)) {
-      yyerror("Definitions of class '%s' disagree.", name);
+      semantic_yyerror_named(name, "Definitions of class '%s' disagree.", name);
       return;
     }
   }
@@ -550,6 +758,7 @@ typedef struct ovlwarn_s {
   struct ovlwarn_s *next;
   const char *func;
   char *warn;
+  compiler_error_location_t *location;
 } ovlwarn_t;
 
 ovlwarn_t *overload_warnings = nullptr;
@@ -562,6 +771,9 @@ static void remove_overload_warnings(const char *func) {
   while (*p) {
     if (!func || (*p)->func == func) {
       FREE((*p)->warn);
+      if ((*p)->location != nullptr) {
+        delete (*p)->location;
+      }
       tmp = *p;
       *p = (*p)->next;
       FREE(tmp);
@@ -575,7 +787,13 @@ static void show_overload_warnings() {
   ovlwarn_t *p, *next;
   p = overload_warnings;
   while (p) {
-    yywarn(p->warn);
+    if (p->location != nullptr) {
+      yywarn_at(*p->location, "%s", p->warn);
+      delete p->location;
+      p->location = nullptr;
+    } else {
+      yywarn(p->warn);
+    }
     FREE(p->warn);
     next = p->next;
     FREE(p);
@@ -671,6 +889,8 @@ static void overload_function(program_t *prog, int index, program_t *defprog, in
       ow->next = overload_warnings;
       ow->func = definition->funcname;
       ow->warn = alloc_cstring(buf, "overload warning");
+      ow->location = clone_diagnostic_location(
+          capture_semantic_diagnostic_location(definition->funcname));
       overload_warnings = ow;
     }
   }
@@ -971,7 +1191,7 @@ int arrange_call_inherited(char *name, parse_node_t *node) {
   shared_string = findstring(real_name);
   /* no need to look for it unless its in the shared string table */
   if (!shared_string) {
-      yyerror("No such function '%s' defined.", real_name);
+      semantic_yyerror_named(real_name, "No such function '%s' defined.", real_name);
       goto invalid;
   }
   ip = reinterpret_cast<inherit_t *>(mem_block[A_INHERITS].block);
@@ -993,7 +1213,7 @@ int arrange_call_inherited(char *name, parse_node_t *node) {
 
         if ((tmp = find_matching_function(ip->prog, shared_string, node))) {
             if (tmp == -1 || (ip->type_mod & DECL_PRIVATE)) {
-                yyerror("Called function is private.");
+                semantic_yyerror_named(real_name, "Called function is private.");
 
                 goto invalid;
             }
@@ -1004,12 +1224,13 @@ int arrange_call_inherited(char *name, parse_node_t *node) {
         }
     }
     if (super_name) {
-        yyerror("Unable to find the inherited function '%s' in file '%s'.", real_name, std::string(super_name, super_length).c_str());
+        semantic_yyerror_named(real_name, "Unable to find the inherited function '%s' in file '%s'.",
+                               real_name, std::string(super_name, super_length).c_str());
         for(auto &name : names) {
             yyerror("  Looked at '%s'", name.c_str());
         }
     } else {
-        yyerror("Unable to find the inherited function '%s'.", real_name);
+        semantic_yyerror_named(real_name, "Unable to find the inherited function '%s'.", real_name);
     }
 invalid:
     node->kind = NODE_CALL_2;
@@ -1028,12 +1249,15 @@ invalid:
  */
 /* Returns an index into A_FUNCTIONS_DEFS.
  */
-int define_new_function(const char *name, int num_arg, int num_local, int flags, int type) {
+int define_new_function(const char *name, int num_arg, int num_local, int flags, int type,
+                        int diagnostic_anchor_id) {
   int oldindex=-1, num=-1, newindex=-1;
   unsigned short argument_start_index;
   ident_hash_elem_t *ihe;
   function_t *funp = nullptr;
   compiler_temp_t *newfunc;
+  diagnostic_override_guard_t diagnostic_override_guard(
+      push_anchor_diagnostic_override(diagnostic_anchor_id, name));
 
   oldindex = (ihe = lookup_ident(name)) ? ihe->dn.function_num : -1;
   if (oldindex >= 0) {
@@ -1058,7 +1282,11 @@ int define_new_function(const char *name, int num_arg, int num_local, int flags,
 
     if (!(funflags & (FUNC_INHERITED | FUNC_PROTOTYPE | FUNC_UNDEFINED)) &&
         !(flags & FUNC_PROTOTYPE)) {
-      yyerror("Redeclaration of function '%s'.", name);
+      if (funflags & DECL_NOMASK) {
+        yyerror("Illegal to redefine 'nomask' function '%s'.", name);
+      } else {
+        yyerror("Redeclaration of function '%s'.", name);
+      }
       return -1;
     }
     /*
@@ -1208,7 +1436,7 @@ int define_new_function(const char *name, int num_arg, int num_local, int flags,
     if (!(flags & FUNC_PROTOTYPE)) {
       for (i = 0; i < current_number_of_locals; i++) {
         if (type_of_locals_ptr[locals_ptr[i].runtime_index] & LOCAL_MOD_UNUSED) {
-          yywarn("Unused local variable '%s'", locals_ptr[i].ihe->name);
+          warn_unused_local(&locals_ptr[i]);
           type_of_locals_ptr[locals_ptr[i].runtime_index] &= ~LOCAL_MOD_UNUSED;
         }
       }
@@ -1252,10 +1480,10 @@ int define_variable(const char *name, int type) {
       yyerror("Too many global variables");
     }
   } else {
-    yywarn("Redeclaration of global variable '%s'.", ihe->name);
-
     if (VAR_TEMP(ihe->dn.global_num)->type & DECL_NOMASK) {
       yyerror("Illegal to redefine 'nomask' variable '%s'.", name);
+    } else {
+      semantic_yywarn_named(ihe->name, "Redeclaration of global variable '%s'.", ihe->name);
     }
     /* Okay, the nasty idiots have two variables of the same name in
        the same object.  This causes headaches for save_object().
@@ -1279,10 +1507,16 @@ int define_variable(const char *name, int type) {
   return n;
 }
 
-int define_new_variable(const char *name, int type) {
+int define_new_variable(const char *name, int type, int diagnostic_anchor_id) {
   int n;
   unsigned short *tp;
   const char **np;
+  auto declaration_location =
+      align_error_location_to_symbol(pop_diagnostic_anchor(diagnostic_anchor_id), name);
+  diagnostic_override_guard_t diagnostic_override_guard(
+      declaration_location.file != nullptr && declaration_location.line > 0
+          ? push_diagnostic_override(declaration_location)
+          : -1);
 
   var_defined = 1;
   name = make_shared_string(name);
@@ -1576,7 +1810,8 @@ int validate_function_call(int f, parse_node_t *args) {
 
   /* Make sure it isn't private */
   if (funflags & DECL_HIDDEN) {
-    yyerror("Illegal to call inherited private function '%s'", funp->funcname);
+    semantic_yyerror_named(funp->funcname, "Illegal to call inherited private function '%s'",
+                           funp->funcname);
   }
 
   /*
@@ -1584,18 +1819,20 @@ int validate_function_call(int f, parse_node_t *args) {
    */
   if (exact_types) {
     if ((funflags & FUNC_UNDEFINED)) {
-      yyerror("Function '%s' undefined.", funp->funcname);
+      semantic_yyerror_named(funp->funcname, "Function '%s' undefined.", funp->funcname);
     }
     /*
      * Check number of arguments.
      */
     if (!(funflags & FUNC_VARARGS) && (funflags & FUNC_STRICT_TYPES)) {
       if (num_var) {
-        yyerror("Illegal to pass a variable number of arguments to non-varargs function '%s'.",
-                funp->funcname);
+        semantic_yyerror_named(funp->funcname,
+                               "Illegal to pass a variable number of arguments to non-varargs function '%s'.",
+                               funp->funcname);
       } else if (funp->num_arg != num_arg && num_arg < funp->min_arg) {
-          yyerror("Wrong number of arguments to '%s', expected: %d, minimum: %d, got: %d.", funp->funcname,
-                  funp->num_arg, funp->min_arg, num_arg);
+          semantic_yyerror_named(funp->funcname,
+                                 "Wrong number of arguments to '%s', expected: %d, minimum: %d, got: %d.",
+                                 funp->funcname, funp->num_arg, funp->min_arg, num_arg);
       }
     }
     /*
@@ -1641,6 +1878,7 @@ int validate_function_call(int f, parse_node_t *args) {
           char buff[256];
           char *end = EndOf(buff);
           char *p;
+          auto argument_location = query_parse_node_diagnostic_location(enode);
 
           p = strput(buff, end, "Bad type for argument ");
           p = strput_int(p, end, i + 1);
@@ -1648,7 +1886,11 @@ int validate_function_call(int f, parse_node_t *args) {
           p = strput(p, end, funp->funcname);
           p = strput(p, end, " ");
           p = get_two_types(p, end, arg_types[i], tmp);
-          yyerror(buff);
+          if (argument_location.file != nullptr && argument_location.line > 0) {
+            yyerror_at(argument_location, "%s", buff);
+          } else {
+            yyerror(buff);
+          }
         }
         enode = enode->r.expr;
       }
@@ -1882,16 +2124,17 @@ parse_node_t *validate_efun_call(int f, parse_node_t *args) {
       args->v.number++;
       num++;
     } else if (num_var && max_arg != -1) {
-      yyerror("Illegal to pass variable number of arguments to non-varargs efun '%s'.",
-              predefs[f].word);
+      semantic_yyerror_named(predefs[f].word,
+                             "Illegal to pass variable number of arguments to non-varargs efun '%s'.",
+                             predefs[f].word);
       CREATE_ERROR(args);
       return args;
     } else if ((num - num_var) < min_arg) {
-      yyerror("Too few arguments to '%s'.", predefs[f].word);
+      semantic_yyerror_named(predefs[f].word, "Too few arguments to '%s'.", predefs[f].word);
       CREATE_ERROR(args);
       return args;
     } else if (num > max_arg && max_arg != -1) {
-      yyerror("Too many arguments to '%s'.", predefs[f].word);
+      semantic_yyerror_named(predefs[f].word, "Too many arguments to '%s'.", predefs[f].word);
       CREATE_ERROR(args);
       return args;
     }
@@ -1918,7 +2161,14 @@ parse_node_t *validate_efun_call(int f, parse_node_t *args) {
         }
 
         if (argp[i] == 0) {
-          yyerror("Bad argument %d to efun %s()", argn + 1, predefs[f].word);
+          auto argument_location = query_parse_node_diagnostic_location(enode);
+          if (argument_location.file != nullptr && argument_location.line > 0) {
+            yyerror_at(argument_location, "Bad argument %d to efun %s()", argn + 1,
+                       predefs[f].word);
+          } else {
+            semantic_yyerror_named(predefs[f].word, "Bad argument %d to efun %s()", argn + 1,
+                                   predefs[f].word);
+          }
         } else {
           /* check for (int) -> (float) promotion */
           if (tmp == TYPE_NUMBER && argp[i] == TYPE_REAL) {
@@ -1957,8 +2207,13 @@ parse_node_t *validate_efun_call(int f, parse_node_t *args) {
   return args;
 }
 
+#undef yyerror
+#undef yywarn
+
 void yyerror(const char *fmt, ...) {
   static char buf[1024 + 1];
+  const char *error_file = current_file;
+  int error_line = current_line;
 
   va_list args;
   va_start(args, fmt);
@@ -1973,15 +2228,29 @@ void yyerror(const char *fmt, ...) {
     lex_fatal = 1;
     return;
   }
-  smart_log(current_file, current_line, buf, 0);
+  auto diagnostic_override = query_current_diagnostic_override();
+  if (diagnostic_override.file != nullptr && diagnostic_override.line > 0) {
+    error_file = diagnostic_override.file;
+    error_line = diagnostic_override.line;
+  } else if (strncmp(buf, "syntax error", strlen("syntax error")) == 0) {
+    auto error_location = query_syntax_error_location();
+    if (error_location.file != nullptr && error_location.line > 0) {
+      error_file = error_location.file;
+      error_line = error_location.line;
+    }
+  }
+
+  smart_log(error_file, error_line, buf, 0);
 #ifdef PACKAGE_MUDLIB_STATS
-  add_errors_for_file(current_file, 1);
+  add_errors_for_file(error_file, 1);
 #endif
   num_parse_error++;
 }
 
 void yywarn(const char *fmt, ...) {
   static char buf[1024 + 1];
+  const char *warning_file = current_file;
+  int warning_line = current_line;
 
   va_list args;
   va_start(args, fmt);
@@ -1993,7 +2262,154 @@ void yywarn(const char *fmt, ...) {
     return;
   }
 
-  smart_log(current_file, current_line, buf, 1);
+  auto diagnostic_override = query_current_diagnostic_override();
+  if (diagnostic_override.file != nullptr && diagnostic_override.line > 0) {
+    warning_file = diagnostic_override.file;
+    warning_line = diagnostic_override.line;
+  }
+
+  smart_log(warning_file, warning_line, buf, 1);
+}
+
+void yyerror_at(compiler_error_location_t location, const char *fmt, ...) {
+  static char buf[1024 + 1];
+  auto override_id = push_diagnostic_override(std::move(location));
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  yyerror("%s", buf);
+  pop_diagnostic_override(override_id);
+}
+
+void yywarn_at(compiler_error_location_t location, const char *fmt, ...) {
+  static char buf[1024 + 1];
+  auto override_id = push_diagnostic_override(std::move(location));
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  yywarn("%s", buf);
+  pop_diagnostic_override(override_id);
+}
+
+void grammar_yyerror(const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  if (strncmp(buf, "syntax error", strlen("syntax error")) == 0) {
+    yyerror("%s", buf);
+    return;
+  }
+
+  auto location = query_current_diagnostic_override();
+  if (location.file == nullptr || location.line <= 0) {
+    location = capture_grammar_diagnostic_location();
+  }
+  if (location.file != nullptr && location.line > 0) {
+    yyerror_at(location, "%s", buf);
+  } else {
+    yyerror("%s", buf);
+  }
+}
+
+void grammar_yywarn(const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  auto location = query_current_diagnostic_override();
+  if (location.file == nullptr || location.line <= 0) {
+    location = capture_grammar_diagnostic_location();
+  }
+  if (location.file != nullptr && location.line > 0) {
+    yywarn_at(location, "%s", buf);
+  } else {
+    yywarn("%s", buf);
+  }
+}
+
+static void semantic_yyerror(const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  auto location = capture_semantic_diagnostic_location();
+  if (location.file != nullptr && location.line > 0) {
+    yyerror_at(location, "%s", buf);
+  } else {
+    yyerror("%s", buf);
+  }
+}
+
+static void semantic_yywarn(const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  auto location = capture_semantic_diagnostic_location();
+  if (location.file != nullptr && location.line > 0) {
+    yywarn_at(location, "%s", buf);
+  } else {
+    yywarn("%s", buf);
+  }
+}
+
+static void semantic_yyerror_named(const char *symbol, const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  auto location = capture_semantic_diagnostic_location(symbol);
+  if (location.file != nullptr && location.line > 0) {
+    yyerror_at(location, "%s", buf);
+  } else {
+    yyerror("%s", buf);
+  }
+}
+
+static void semantic_yywarn_named(const char *symbol, const char *fmt, ...) {
+  static char buf[1024 + 1];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  buf[sizeof(buf) - 1] = '\0';
+
+  auto location = capture_semantic_diagnostic_location(symbol);
+  if (location.file != nullptr && location.line > 0) {
+    yywarn_at(location, "%s", buf);
+  } else {
+    yywarn("%s", buf);
+  }
 }
 
 /*
@@ -2500,6 +2916,8 @@ static program_t *epilog(void) {
 static void prolog(std::unique_ptr<LexStream> stream, const char *name) {
   int i;
 
+  clear_last_compile_diagnostic();
+  clear_parse_node_diagnostic_locations();
   function_context.num_parameters = -1;
   num_parse_error = 0;
   global_modifiers = 0;
@@ -2786,6 +3204,7 @@ char *allocate_in_mem_block(int n, int size) {
  */
 void smart_log(const char *error_file, int line, const char *what, int flag) {
   auto logs = prepare_logs(error_file, line, what, flag, pragmas & PRAGMA_ERROR_CONTEXT);
+  cache_compile_diagnostic(error_file, line, what, flag, logs);
   for (auto &log : logs) {
     debug_message("%s", log.c_str());
   }

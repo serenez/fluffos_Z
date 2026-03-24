@@ -25,12 +25,24 @@ static CalloutHandleMapType g_callout_handle_map;
 using CalloutObjectMapType = std::unordered_multimap<object_t *, LPC_INT>;
 static CalloutObjectMapType g_callout_object_handle_map;
 
-// TODO: It maybe possible to change to a per-object counter.
+// Handle 0 as an always-invalid sentinel. We allocate the next free handle from
+// the live map so long-lived callouts do not become unremovable just because
+// newer handles were created later.
+static LPC_INT next_handle = 0;
 
-// this counter starts with 1 because common wrong usage by passing a 0
-// (Uninitialized string) to remove_call_out, this allows us to quickly filter
-// that wrong call.
-static uint64_t unique = 1;
+namespace {
+LPC_INT allocate_call_out_handle() {
+  do {
+    if (next_handle == LPC_INT_MAX) {
+      next_handle = 1;
+    } else {
+      next_handle++;
+    }
+  } while (next_handle == 0 || g_callout_handle_map.find(next_handle) != g_callout_handle_map.end());
+
+  return next_handle;
+}
+}  // namespace
 
 static void free_call(pending_call_t * /*cop*/);
 static void free_called_call(pending_call_t * /*cop*/);
@@ -131,10 +143,7 @@ LPC_INT new_call_out(object_t *ob, svalue_t *fun, std::chrono::milliseconds dela
     cop->ob = nullptr;
   }
 
-  cop->handle = g_current_gametick + (++unique);
-  if (unique > 0xffffffff) {
-    unique = 1;  // force wrapping around.
-  }
+  cop->handle = allocate_call_out_handle();
   DBG_CALLOUT("  handle: %" LPC_INT_FMTSTR_P "\n", cop->handle);
 
   g_callout_handle_map.insert(std::make_pair(cop->handle, cop));
@@ -314,7 +323,7 @@ int remove_call_out_by_handle(object_t *ob, LPC_INT handle) {
   DBG_CALLOUT("remove_call_out_by_handle: ob: %s, handle: %" LPC_INT_FMTSTR_P ".\n", ob->obname,
               handle);
 
-  if (handle == 0 || handle < unique) {
+  if (handle == 0) {
     DBG_CALLOUT("  invalid handle, ignored.\n");
     return -1;
   }
@@ -338,7 +347,7 @@ int find_call_out_by_handle(object_t *ob, LPC_INT handle) {
   DBG_CALLOUT("find_call_out_by_handle: ob: %s, handle: %" LPC_INT_FMTSTR_P "\n", ob->obname,
               handle);
 
-  if (handle == 0 || handle < unique) {
+  if (handle == 0) {
     DBG_CALLOUT("  invalid handle, ignored.\n");
     return -1;
   }

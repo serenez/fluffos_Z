@@ -2,6 +2,9 @@
 
 #include "packages/core/add_action.h"
 
+// in backend.cc
+extern void update_load_av();
+
 #ifndef NO_ADD_ACTION
 
 #define MAX_VERB_BUFF 100
@@ -692,6 +695,9 @@ void f_command() {
   if (current_object && !(current_object->flags & O_DESTRUCTED)) {
     char buff[1000];
     LPC_INT const save_eval_cost = get_eval();
+
+    // 统计指令负载（支持 Gateway 用户）
+    update_load_av();
 
     if (SVALUE_STRLEN(sp) > sizeof(buff) - 1) {
       error("Too long command.\n");

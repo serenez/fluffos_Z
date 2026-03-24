@@ -1,0 +1,23 @@
+{
+  "host": "",
+  "port": 0,
+  "username": "",
+  "password": "",
+  "rootPath": "d:\\下载\\116.205.245.78\\202512240847\\json_extension",
+  "serverKey": "buyi-SerenezZmuy",
+  "encoding": "UTF8",
+  "loginKey": "buyi-ZMuy",
+  "compile": {
+    "defaultDir": "",
+    "autoCompileOnSave": false,
+    "timeout": 30000,
+    "showDetails": true
+  },
+  "connection": {
+    "timeout": 10000,
+    "maxRetries": 3,
+    "retryInterval": 5000,
+    "heartbeatInterval": 30000
+  },
+  "loginWithEmail": false
+}

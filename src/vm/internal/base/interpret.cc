@@ -2029,6 +2029,7 @@ void eval_instruction(char *p) {
       last = (last + 1) % (sizeof previous_instruction / sizeof(int));
     }
 
+    check_eval();
     if (outoftime) {
       debug_message("Eval interrupted: object %s cost limit reached, limit: %ld usec.\n",
                     current_object->obname, max_eval_cost);
@@ -2420,7 +2421,7 @@ void eval_instruction(char *p) {
       }
       case F_NULLISH_EQ: {
         if (sp->type != T_LVALUE) {
-          error("Invalid Program: non-lvalue argument to ??=.");
+          error("Invalid Program: non-lvalue argument to ?" "?=.");
         }
         svalue_t *lval = sp->u.lvalue;
         if (lval->type == T_NUMBER && !lval->u.number && (lval->subtype == T_UNDEFINED)) {

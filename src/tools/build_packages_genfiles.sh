@@ -11,7 +11,7 @@ PACKAGES_SPEC=packages.spec
 PACKAGES_SPEC_FULL=packages.fullspec
 
 # do pre-cleanup
-rm -f "$PACKAGES_SPEC" "PACKAGES_SPEC_FULL" >/dev/null 2>&1 || true
+rm -f "$PACKAGES_SPEC" "$PACKAGES_SPEC_FULL" >/dev/null 2>&1 || true
 
 PACKAGES=$("$@" -E -undef -dM $ALL_OPTIONS_H | grep PACKAGE_ | cut -d " " -f 2)
 

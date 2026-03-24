@@ -117,15 +117,15 @@ int ws_ascii_callback(struct lws *wsi, enum lws_callback_reasons reason, void *u
       lwsl_info("LWS_CALLBACK_CLOSED: wsi %p\n", wsi);
 
       auto *ip = pss->user;
-      if (!ip) {
-        return -1;
+      if (ip) {
+        remove_interactive(ip->ob, 0);
+        pss->user = nullptr;
       }
 
-      remove_interactive(ip->ob, 0);
-      pss->user = nullptr;
-
-      evbuffer_free(pss->buffer);
-      pss->buffer = nullptr;
+      if (pss->buffer) {
+        evbuffer_free(pss->buffer);
+        pss->buffer = nullptr;
+      }
 
       break;
     }
@@ -137,12 +137,7 @@ int ws_ascii_callback(struct lws *wsi, enum lws_callback_reasons reason, void *u
       static unsigned char buf[LWS_PRE + 2048];
       auto numbytes = evbuffer_copyout(pss->buffer, &buf[LWS_PRE], sizeof(buf) - LWS_PRE);
       if (numbytes > 0) {
-        auto new_numbytes = u8_truncate(&buf[LWS_PRE], numbytes);
-        if (new_numbytes != numbytes) {
-          auto rest = new_numbytes - numbytes;
-          evbuffer_prepend(pss->buffer, &buf[LWS_PRE + new_numbytes], rest);
-          numbytes = new_numbytes;
-        }
+        numbytes = u8_truncate(&buf[LWS_PRE], numbytes);
 #ifdef DEBUG
         if (!u8_validate(&buf[LWS_PRE], numbytes)) {
           char buf1[sizeof(buf) + 1] = {};

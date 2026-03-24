@@ -13,6 +13,7 @@
 #include <event2/event.h>     // for EV_TIMEOUT, etc
 #include <event2/listener.h>  // for evconnlistener_free, etc
 #include <event2/util.h>      // for evutil_closesocket, etc
+#include <cstdint>            // for int32_t, uint32_t
 #include <cstdarg>            // for va_end, va_list, va_copy, etc
 #include <cstdio>             // for snprintf, vsnprintf, fwrite, etc
 #include <cstring>            // for NULL, memcpy, strlen, etc
@@ -69,6 +70,19 @@ namespace {
 struct UserEventData {
   int idx;
 };
+
+bool decode_mud_packet_size(const char *buffer, int *packet_size) {
+  uint32_t network_size = 0;
+  std::memcpy(&network_size, buffer, sizeof(network_size));
+
+  auto decoded_size = static_cast<int32_t>(ntohl(network_size));
+  if (decoded_size <= 0 || decoded_size > MAX_TEXT - 5) {
+    return false;
+  }
+
+  *packet_size = decoded_size;
+  return true;
+}
 
 void maybe_schedule_user_command(interactive_t *user) {
   // If user has a complete command, schedule a command execution.
@@ -581,6 +595,16 @@ void add_message(object_t *who, const char *data, int len) {
       }
       break;
     }
+    case PORT_TYPE_GATEWAY: {
+      // Gateway 用户：通过 gateway 发送数据
+      // 增强安全检查：验证 GATEWAY_SESSION 标志 AND session_id 有效性
+      if ((ip->iflags & GATEWAY_SESSION) && ip->gateway_session_id) {
+        extern int gateway_send_to_session(const char*, const char*, size_t);
+        inet_volume += len;
+        gateway_send_to_session(ip->gateway_session_id, data, len);
+      }
+      break;
+    }
     default: {
       inet_volume += len;
       bufferevent_write(ip->ev_buffer, data, len);
@@ -727,7 +751,18 @@ void get_user_data(interactive_t *ip) {
       if (ip->text_end < 4) {
         text_space = 4 - ip->text_end;
       } else {
-        text_space = *reinterpret_cast<volatile int *>(ip->text) - ip->text_end + 4;
+        int packet_size = 0;
+        if (!decode_mud_packet_size(ip->text, &packet_size)) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
+        }
+        text_space = packet_size - ip->text_end + 4;
+        if (text_space <= 0) {
+          ip->iflags |= NET_DEAD;
+          remove_interactive(ip->ob, 0);
+          return;
+        }
       }
       break;
 
@@ -792,9 +827,11 @@ void get_user_data(interactive_t *ip) {
 
       if (num_bytes == text_space) {
         if (ip->text_end == 4) {
-          *reinterpret_cast<volatile int *>(ip->text) = ntohl(*reinterpret_cast<int *>(ip->text));
-          if (*reinterpret_cast<volatile int *>(ip->text) > MAX_TEXT - 5) {
+          int packet_size = 0;
+          if (!decode_mud_packet_size(ip->text, &packet_size)) {
+            ip->iflags |= NET_DEAD;
             remove_interactive(ip->ob, 0);
+            return;
           }
         } else {
           svalue_t value;
@@ -1346,6 +1383,22 @@ void remove_interactive(object_t *ob, int dested) {
     ip->input_to = nullptr;
   }
 #endif
+
+  // Gateway session cleanup
+  if (ip->iflags & GATEWAY_SESSION) {
+    extern void gateway_handle_remove_interactive(interactive_t *ip);
+    gateway_handle_remove_interactive(ip);
+
+    // Free gateway fields
+    if (ip->gateway_session_id) {
+      FREE_MSTR(ip->gateway_session_id);
+      ip->gateway_session_id = nullptr;
+    }
+    if (ip->gateway_real_ip) {
+      FREE_MSTR(ip->gateway_real_ip);
+      ip->gateway_real_ip = nullptr;
+    }
+  }
 
   user_del(ip);
   FREE(ip);

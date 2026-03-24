@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_YY_PROJECTS_GIT_FLUFFOS_BUILD_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
-# define YY_YY_PROJECTS_GIT_FLUFFOS_BUILD_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
+#ifndef YY_YY_C_USERS_VRUSTX_DESKTOP_MUD_NEXTB_FLUFFOS_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
+# define YY_YY_C_USERS_VRUSTX_DESKTOP_MUD_NEXTB_FLUFFOS_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -117,7 +117,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 131 "/projects/git/fluffos/src/compiler/internal/grammar.y"
+#line 261 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/src/compiler/internal/grammar.y"
 
   LPC_INT number; /* 8 */
   LPC_FLOAT real; /* 8 */
@@ -137,8 +137,17 @@ union YYSTYPE
     uint16_t save_current_type;
     uint16_t save_exact_types;
   } func_block; /* 8 */
+  struct {
+    int context;
+    int num_refs;
+    int callee_anchor;
+  } call_state; /* 12 */
+  struct {
+    char *name;
+    int anchor;
+  } anchored_string; /* 12 */
 
-#line 142 "/projects/git/fluffos/build/src/grammar.autogen.h"
+#line 151 "C:/Users/vrustx/Desktop/mud_nextB/fluffos/build/mingw64-generic/src/grammar.autogen.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -153,4 +162,4 @@ extern YYSTYPE yylval;
 int yyparse (void);
 
 
-#endif /* !YY_YY_PROJECTS_GIT_FLUFFOS_BUILD_SRC_GRAMMAR_AUTOGEN_H_INCLUDED  */
+#endif /* !YY_YY_C_USERS_VRUSTX_DESKTOP_MUD_NEXTB_FLUFFOS_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED  */

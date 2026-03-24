@@ -18,6 +18,11 @@ void init_eval();
 // Set evaluation deadline to given microseconds.
 void set_eval(uint64_t time);
 
+// Refresh the current evaluation state and flip outoftime when the deadline is
+// exceeded. On Linux the signal handler already does this asynchronously, while
+// other platforms use a deadline check fallback.
+void check_eval();
+
 // Get remaining microseconds, if no, 0.
 int64_t get_eval();
 

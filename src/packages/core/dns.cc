@@ -13,7 +13,16 @@ static struct evdns_base *g_dns_base = nullptr;
 
 void init_dns_event_base(struct event_base *base) {
   // Configure a DNS resolver with default nameserver
+  if (base == nullptr) {
+    g_dns_base = nullptr;
+    debug_message("init_dns_event_base: skipped because event base is unavailable.\n");
+    return;
+  }
   g_dns_base = evdns_base_new(base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+  if (g_dns_base == nullptr) {
+    debug_message("init_dns_event_base: evdns_base_new failed.\n");
+    return;
+  }
 
 #ifdef _WIN32
   // Hack: force loading localhost entires

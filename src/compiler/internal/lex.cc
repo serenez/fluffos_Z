@@ -86,6 +86,14 @@ int current_line_saved; /* last line in this file where line num
 int total_lines;        /* Used to compute average compiled lines/s */
 const char *current_file;
 int current_file_id;
+static compiler_error_location_t pending_token_location = {nullptr, 0, 0, 0, 0, ""};
+static compiler_error_location_t current_lookahead_location = {nullptr, 0, 0, 0, 0, ""};
+static compiler_error_location_t last_non_eof_token_location = {nullptr, 0, 0, 0, 0, ""};
+static compiler_error_location_t previous_non_eof_token_location = {nullptr, 0, 0, 0, 0, ""};
+static std::vector<compiler_error_location_t> diagnostic_anchor_stack;
+static std::vector<compiler_error_location_t> diagnostic_override_stack;
+static const char *pending_token_start = nullptr;
+static const char *pending_line_start = nullptr;
 
 /* Bit flags for pragmas in effect */
 int pragmas;
@@ -280,6 +288,265 @@ int parseHexIntegerLiteral(unsigned char c);
 int parseBinaryIntegerLiteral(unsigned char c);
 static defn_t *defns[DEFHASH];
 static ifstate_t *iftop = nullptr;
+
+static const char *find_line_start(const char *cursor) {
+  if (cursor == nullptr || cur_lbuf == nullptr) {
+    return nullptr;
+  }
+
+  auto *start = cursor;
+  while (start != &cur_lbuf->buf[0]) {
+    if (start[-1] == '\n' || static_cast<unsigned char>(start[-1]) == LEX_EOF) {
+      break;
+    }
+    start--;
+  }
+  return start;
+}
+
+static const char *find_line_end(const char *cursor) {
+  if (cursor == nullptr || cur_lbuf == nullptr) {
+    return nullptr;
+  }
+
+  auto *end = cursor;
+  while (end != cur_lbuf->buf_end && *end != '\n' && static_cast<unsigned char>(*end) != LEX_EOF) {
+    end++;
+  }
+  return end;
+}
+
+static compiler_error_location_t make_error_location(const char *file, int file_id, int line,
+                                                     int column = 0, int end_column = 0,
+                                                     std::string line_text = {}) {
+  return compiler_error_location_t{file, file_id, line, column, end_column, line_text};
+}
+
+static compiler_error_location_t empty_error_location() {
+  return make_error_location(nullptr, 0, 0);
+}
+
+static compiler_error_location_t capture_error_location(const char *file, int file_id, int line,
+                                                        const char *cursor) {
+  if (file == nullptr || cursor == nullptr) {
+    return make_error_location(file, file_id, line);
+  }
+
+  auto *start = find_line_start(cursor);
+  auto *end = find_line_end(cursor);
+  if (start == nullptr || end == nullptr || end < start) {
+    return make_error_location(file, file_id, line);
+  }
+
+  int column = static_cast<int>(cursor - start);
+  if (column < 0) {
+    column = 0;
+  }
+  auto text = std::string(start, static_cast<std::string::size_type>(end - start));
+  return make_error_location(file, file_id, line, column, column, text);
+}
+
+static compiler_error_location_t anchor_after_token(compiler_error_location_t location) {
+  if (location.end_column > location.column) {
+    location.column = location.end_column;
+  }
+  return location;
+}
+
+static compiler_error_location_t capture_current_error_location() {
+  return capture_error_location(current_file, current_file_id, current_line, outp);
+}
+
+compiler_error_location_t align_error_location_to_symbol(compiler_error_location_t location,
+                                                         const char *symbol) {
+  if (symbol == nullptr || *symbol == '\0' || location.line_text.empty()) {
+    return location;
+  }
+
+  auto needle = std::string(symbol);
+  auto column = std::max(0, location.column);
+  auto best_distance = std::numeric_limits<int>::max();
+  auto best_position = std::string::npos;
+
+  for (auto pos = location.line_text.find(needle); pos != std::string::npos;
+       pos = location.line_text.find(needle, pos + 1)) {
+    auto distance = std::abs(static_cast<int>(pos) - column);
+    if (distance < best_distance ||
+        (distance == best_distance &&
+         (best_position == std::string::npos || pos <= static_cast<std::size_t>(column)))) {
+      best_distance = distance;
+      best_position = pos;
+    }
+  }
+
+  if (best_position == std::string::npos) {
+    return location;
+  }
+
+  location.column = static_cast<int>(best_position);
+  location.end_column = static_cast<int>(best_position + needle.size());
+  return location;
+}
+
+static int remember_lex_token(int token) {
+  if (pending_line_start != nullptr) {
+    auto end_column = static_cast<int>(outp - pending_line_start);
+    if (end_column < pending_token_location.column) {
+      end_column = pending_token_location.column;
+    }
+    auto line_size = static_cast<int>(pending_token_location.line_text.size());
+    if (end_column > line_size) {
+      end_column = line_size;
+    }
+    pending_token_location.end_column = end_column;
+  }
+
+  current_lookahead_location = pending_token_location;
+  if (token > YYEOF && token != YYerror) {
+    previous_non_eof_token_location = last_non_eof_token_location;
+    last_non_eof_token_location = pending_token_location;
+  }
+  return token;
+}
+
+compiler_error_location_t query_syntax_error_location(void) {
+  extern int yychar;
+
+  if (yychar <= YYEOF && last_non_eof_token_location.file != nullptr &&
+      last_non_eof_token_location.line > 0) {
+    return anchor_after_token(last_non_eof_token_location);
+  }
+
+  if (previous_non_eof_token_location.file != nullptr && previous_non_eof_token_location.line > 0 &&
+      current_lookahead_location.file != nullptr && current_lookahead_location.line > 0) {
+    if (current_lookahead_location.file != previous_non_eof_token_location.file ||
+        current_lookahead_location.line > previous_non_eof_token_location.line) {
+      return anchor_after_token(previous_non_eof_token_location);
+    }
+  }
+
+  if (current_lookahead_location.file != nullptr && current_lookahead_location.line > 0) {
+    return current_lookahead_location;
+  }
+
+  return capture_current_error_location();
+}
+
+compiler_error_location_t query_last_non_eof_token_location(void) {
+  if (last_non_eof_token_location.file != nullptr && last_non_eof_token_location.line > 0) {
+    return last_non_eof_token_location;
+  }
+  return empty_error_location();
+}
+
+compiler_error_location_t query_previous_non_eof_token_location(void) {
+  if (previous_non_eof_token_location.file != nullptr && previous_non_eof_token_location.line > 0) {
+    return previous_non_eof_token_location;
+  }
+  return empty_error_location();
+}
+
+compiler_error_location_t query_symbol_anchor_before_current_location(const char *symbol) {
+  if (symbol == nullptr || *symbol == '\0') {
+    return empty_error_location();
+  }
+
+  auto location = capture_current_error_location();
+  if (location.file == nullptr || location.line <= 0 || location.line_text.empty()) {
+    return empty_error_location();
+  }
+
+  auto cursor_column = static_cast<std::string::size_type>(
+      std::max(0, std::min(location.column, static_cast<int>(location.line_text.size()))));
+  auto search_end = cursor_column;
+  if (search_end < location.line_text.size()) {
+    search_end++;
+  }
+
+  auto needle = std::string(symbol);
+  auto pos = location.line_text.rfind(needle, search_end);
+  if (pos == std::string::npos) {
+    return location;
+  }
+
+  location.column = static_cast<int>(pos);
+  location.end_column = static_cast<int>(pos + needle.size());
+  return location;
+}
+
+int push_diagnostic_anchor(compiler_error_location_t location) {
+  diagnostic_anchor_stack.emplace_back(std::move(location));
+  return static_cast<int>(diagnostic_anchor_stack.size()) - 1;
+}
+
+compiler_error_location_t query_diagnostic_anchor(int anchor_id) {
+  if (anchor_id < 0 || anchor_id >= static_cast<int>(diagnostic_anchor_stack.size())) {
+    return empty_error_location();
+  }
+  return diagnostic_anchor_stack[anchor_id];
+}
+
+compiler_error_location_t pop_diagnostic_anchor(int anchor_id) {
+  if (anchor_id < 0 || anchor_id >= static_cast<int>(diagnostic_anchor_stack.size())) {
+    return empty_error_location();
+  }
+
+  auto location = diagnostic_anchor_stack[anchor_id];
+  diagnostic_anchor_stack.resize(anchor_id);
+  return location;
+}
+
+int push_diagnostic_override(compiler_error_location_t location) {
+  diagnostic_override_stack.emplace_back(std::move(location));
+  return static_cast<int>(diagnostic_override_stack.size()) - 1;
+}
+
+void pop_diagnostic_override(int override_id) {
+  if (override_id < 0 || override_id >= static_cast<int>(diagnostic_override_stack.size())) {
+    return;
+  }
+  diagnostic_override_stack.resize(override_id);
+}
+
+compiler_error_location_t query_current_diagnostic_override(void) {
+  if (diagnostic_override_stack.empty()) {
+    return empty_error_location();
+  }
+  return diagnostic_override_stack.back();
+}
+
+static std::pair<std::string, std::string::size_type> expand_tabs_for_display(
+    const std::string &content, int raw_column) {
+  constexpr std::string::size_type kTabWidth = 8;
+
+  auto clamped_column = static_cast<std::string::size_type>(
+      std::max(0, std::min(raw_column, static_cast<int>(content.size()))));
+  std::string expanded;
+  expanded.reserve(content.size());
+
+  std::string::size_type display_column = 0;
+  std::string::size_type caret_column = 0;
+  for (std::string::size_type index = 0; index < content.size(); index++) {
+    if (index == clamped_column) {
+      caret_column = display_column;
+    }
+
+    if (content[index] == '\t') {
+      auto spaces = kTabWidth - (display_column % kTabWidth);
+      expanded.append(spaces, ' ');
+      display_column += spaces;
+    } else {
+      expanded.push_back(content[index]);
+      display_column++;
+    }
+  }
+
+  if (clamped_column == content.size()) {
+    caret_column = display_column;
+  }
+
+  return {expanded, caret_column};
+}
 
 static defn_t *lookup_definition(const char *s) {
   defn_t *p;
@@ -1583,42 +1850,84 @@ char *show_error_context() {
 
 std::vector<std::string> prepare_logs(const char *error_file, int line, const char *what, int flag,
                                       bool include_error_context) {
+  compiler_error_location_t context_location;
+  bool has_snapshot = false;
+  auto diagnostic_override = query_current_diagnostic_override();
+
+  if (!flag && strncmp(what, "syntax error", strlen("syntax error")) == 0) {
+    context_location = query_syntax_error_location();
+    has_snapshot = !context_location.line_text.empty();
+  } else if (include_error_context && diagnostic_override.file != nullptr &&
+             diagnostic_override.line > 0) {
+    context_location = diagnostic_override;
+    has_snapshot = !context_location.line_text.empty();
+  } else if (include_error_context && static_cast<unsigned char>(outp[-1]) != LEX_EOF) {
+    context_location = capture_current_error_location();
+    has_snapshot = !context_location.line_text.empty();
+  }
+
+  std::string rendered_content;
+  std::string::size_type rendered_caret_column = 0;
+  if (has_snapshot) {
+    auto expanded = expand_tabs_for_display(context_location.line_text, context_location.column);
+    rendered_content = std::move(expanded.first);
+    rendered_caret_column = expanded.second;
+  }
+
   std::vector<std::string> logs;
-  logs.emplace_back(fmt::format(FMT_STRING("/{} line {}: {}{}\n"), error_file, line,
-                                flag ? "Warning: " : "", what));
+  if (has_snapshot) {
+    logs.emplace_back(fmt::format(FMT_STRING("/{} line {}, column {}: {}{}\n"), error_file, line,
+                                  rendered_caret_column + 1, flag ? "Warning: " : "", what));
+  } else {
+    logs.emplace_back(fmt::format(FMT_STRING("/{} line {}: {}{}\n"), error_file, line,
+                                  flag ? "Warning: " : "", what));
+  }
 
   if (include_error_context) {
-    if (static_cast<unsigned char>(outp[-1]) != LEX_EOF) {
-      const char *start = outp;
-      while (start != &cur_lbuf->buf[0]) {
-        if (start[-1] == '\n' || start[-1] == LEX_EOF) {
-          break;
+    if (!has_snapshot && static_cast<unsigned char>(outp[-1]) != LEX_EOF) {
+      context_location = capture_current_error_location();
+      has_snapshot = !context_location.line_text.empty();
+    }
+
+    if (has_snapshot) {
+      std::string content = rendered_content;
+      if (!content.empty() && content.back() == '\r') {
+        content.pop_back();
+      }
+      auto caret_column =
+          std::min(rendered_caret_column, static_cast<std::string::size_type>(content.size()));
+
+      if (content.size() > 120) {
+        std::string::size_type window_start = 0;
+        if (caret_column > 40) {
+          window_start = caret_column - 40;
         }
-        start--;
+        if (window_start >= content.size()) {
+          window_start = content.size() - 1;
+        }
+
+        bool prefix_truncated = window_start > 0;
+        std::string::size_type max_window = 120;
+        if (prefix_truncated) {
+          max_window -= 3;
+        }
+
+        bool suffix_truncated = (window_start + max_window) < content.size();
+        if (suffix_truncated) {
+          max_window -= 3;
+        }
+
+        auto visible = content.substr(window_start, max_window);
+        content = prefix_truncated ? "..." + visible : visible;
+        if (suffix_truncated) {
+          content += "...";
+        }
+        caret_column = caret_column - window_start + (prefix_truncated ? 3 : 0);
       }
 
-      const char *end = outp;
-      while (end != cur_lbuf->buf_end && *end != LEX_EOF) {
-        if (end[1] == '\n' || end[1] == LEX_EOF) {
-          break;
-        }
-        end++;
-      }
-
-      auto size = end - start;
-      if (size > 0) {
-        bool truncated = false;
-        if (size > 120) {
-          size = 117;
-          truncated = true;
-        }
-        std::string content{start, static_cast<std::string::size_type>(size)};
-        if (truncated) content += "...";
-        content = trim(content);
-        logs.emplace_back(fmt::format(FMT_STRING("  {}\n"), content));
-        logs.emplace_back(fmt::format(
-            FMT_STRING("  {}^\n"), std::string(truncated ? content.size() : (outp - start), ' ')));
-      }
+      logs.emplace_back(fmt::format(FMT_STRING("  {}\n"), content));
+      logs.emplace_back(
+          fmt::format(FMT_STRING("  {}^\n"), std::string(caret_column, ' ')));
     }
   }
 
@@ -1796,12 +2105,12 @@ static int old_func() {
 #define return_assign(opcode) \
   {                           \
     yylval.number = opcode;   \
-    return L_ASSIGN;          \
+    return remember_lex_token(L_ASSIGN); \
   }
 #define return_order(opcode) \
   {                          \
     yylval.number = opcode;  \
-    return L_ORDER;          \
+    return remember_lex_token(L_ORDER); \
   }
 
 /* To halt execution when a #breakpoint line is encountered, set a breakpoint
@@ -1826,6 +2135,9 @@ int yylex() {
     //    if (lex_fatal) {
     //      return -1;
     //    }
+    pending_token_start = outp;
+    pending_line_start = find_line_start(outp);
+    pending_token_location = capture_error_location(current_file, current_file_id, current_line, outp);
     switch (c = *outp++) {
       case LEX_EOF:
         if (inctop) {
@@ -1876,7 +2188,7 @@ int yylex() {
           }
         }
         outp--;
-        return -1;
+        return remember_lex_token(-1);
       case '\r':
         // ignore these.
         break;
@@ -1899,25 +2211,25 @@ int yylex() {
       case '+': {
         switch (*outp++) {
           case '+':
-            return L_INC;
+            return remember_lex_token(L_INC);
           case '=':
             return_assign(F_ADD_EQ);
           default:
             outp--;
-            return '+';
+            return remember_lex_token('+');
         }
       }
       case '-': {
         switch (*outp++) {
           case '>':
-            return L_ARROW;
+            return remember_lex_token(L_ARROW);
           case '-':
-            return L_DEC;
+            return remember_lex_token(L_DEC);
           case '=':
             return_assign(F_SUB_EQ);
           default:
             outp--;
-            return '-';
+            return remember_lex_token('-');
         }
       }
       case '&': {
@@ -1927,12 +2239,12 @@ int yylex() {
               outp++;
               return_assign(F_LAND_EQ);
             }
-            return L_LAND;
+            return remember_lex_token(L_LAND);
           case '=':
             return_assign(F_AND_EQ);
           default:
             outp--;
-            return '&';
+            return remember_lex_token('&');
         }
       }
       case '|': {
@@ -1942,12 +2254,12 @@ int yylex() {
               outp++;
               return_assign(F_LOR_EQ);
             }
-            return L_LOR;
+            return remember_lex_token(L_LOR);
           case '=':
             return_assign(F_OR_EQ);
           default:
             outp--;
-            return '|';
+            return remember_lex_token('|');
         }
       }
       case '^': {
@@ -1955,7 +2267,7 @@ int yylex() {
           return_assign(F_XOR_EQ);
         }
         outp--;
-        return '^';
+        return remember_lex_token('^');
       }
       case '<': {
         switch (*outp++) {
@@ -1964,13 +2276,13 @@ int yylex() {
               return_assign(F_LSH_EQ);
             }
             outp--;
-            return L_LSH;
+            return remember_lex_token(L_LSH);
           }
           case '=':
             return_order(F_LE);
           default:
             outp--;
-            return '<';
+            return remember_lex_token('<');
         }
       }
       case '>': {
@@ -1980,7 +2292,7 @@ int yylex() {
               return_assign(F_RSH_EQ);
             }
             outp--;
-            return L_RSH;
+            return remember_lex_token(L_RSH);
           }
           case '=':
             return_order(F_GE);
@@ -1994,14 +2306,14 @@ int yylex() {
           return_assign(F_MULT_EQ);
         }
         outp--;
-        return '*';
+        return remember_lex_token('*');
       }
       case '%': {
         if (*outp++ == '=') {
           return_assign(F_MOD_EQ);
         }
         outp--;
-        return '%';
+        return remember_lex_token('%');
       }
       case '/':
         switch (*outp++) {
@@ -2015,16 +2327,16 @@ int yylex() {
             return_assign(F_DIV_EQ);
           default:
             outp--;
-            return '/';
+            return remember_lex_token('/');
         }
         break;
       case '=':
         if (*outp++ == '=') {
-          return L_EQ;
+          return remember_lex_token(L_EQ);
         }
         outp--;
         yylval.number = F_ASSIGN;
-        return L_ASSIGN;
+        return remember_lex_token(L_ASSIGN);
       case '(':
         yyp = outp;
         if (CONFIG_INT(__RC_WOMBLES__)) {
@@ -2044,16 +2356,16 @@ int yylex() {
         switch (c) {
           case '{': {
             outp = yyp;
-            return L_ARRAY_OPEN;
+            return remember_lex_token(L_ARRAY_OPEN);
           }
           case '[': {
             outp = yyp;
-            return L_MAPPING_OPEN;
+            return remember_lex_token(L_MAPPING_OPEN);
           }
           case ':': {
             if ((c = *yyp++) == ':') {
               outp = yyp -= 2;
-              return '(';
+              return remember_lex_token('(');
             } else {
               while (isspace(c)) {
                 if (c == '\n') {
@@ -2076,27 +2388,27 @@ int yylex() {
 
               outp--;
               push_function_context();
-              return L_FUNCTION_OPEN;
+              return remember_lex_token(L_FUNCTION_OPEN);
             }
           }
           default: {
             outp = yyp - 1;
-            return '(';
+            return remember_lex_token('(');
           }
         }
       // $var
       case '$': {
         if (!current_function_context) {
           lexerror("$var illegal outside of function pointer.");
-          return YYerror;
+          return remember_lex_token(YYerror);
         }
         if (current_function_context->num_parameters < 0) {
           lexerror("$var illegal inside anonymous function pointer.");
-          return YYerror;
+          return remember_lex_token(YYerror);
         }
         if (!isdigit(c = *outp++)) {
           outp--;
-          return '$';
+          return remember_lex_token('$');
         }
         yyp = yytext;
         SAVEC;
@@ -2116,7 +2428,7 @@ int yylex() {
         } else if (yylval.number >= current_function_context->num_parameters) {
           current_function_context->num_parameters = yylval.number + 1;
         }
-        return L_PARAMETER;
+        return remember_lex_token(L_PARAMETER);
       }
       case ')':
       case '{':
@@ -2126,7 +2438,7 @@ int yylex() {
       case ';':
       case ',':
       case '~':
-        return c;
+        return remember_lex_token(c);
 #ifndef USE_TRIGRAPHS
       case '?':
         /* Check for ?? and ??= operators */
@@ -2136,9 +2448,9 @@ int yylex() {
             outp++;
             return_assign(F_NULLISH_EQ);
           }
-          return L_QUESTION_QUESTION;
+          return remember_lex_token(L_QUESTION_QUESTION);
         }
-        return c;
+        return remember_lex_token(c);
 #else
       /*
        * You're probably asking, what the heck are trigraphs?
@@ -2154,7 +2466,7 @@ int yylex() {
       case '?':
         if (*outp++ != '?') {
           outp--;
-          return '?';
+          return remember_lex_token('?');
         }
         c = *outp++;
         if (c == '=') {
@@ -2162,48 +2474,48 @@ int yylex() {
         }
         switch (c) {
           case '/':
-            return '\\';
+            return remember_lex_token('\\');
           case '\'':
-            return '^';
+            return remember_lex_token('^');
           case '(':
-            return '[';
+            return remember_lex_token('[');
           case ')':
-            return ']';
+            return remember_lex_token(']');
           case '!':
-            return '|';
+            return remember_lex_token('|');
           case '<':
-            return '{';
+            return remember_lex_token('{');
           case '>':
-            return '}';
+            return remember_lex_token('}');
           case '-':
-            return '~';
+            return remember_lex_token('~');
           default:
             outp--;  // Back up one char (not two - keep the ??)
-            return L_QUESTION_QUESTION;
+            return remember_lex_token(L_QUESTION_QUESTION);
         }
 #endif
       case '!':
         if (*outp++ == '=') {
-          return L_NE;
+          return remember_lex_token(L_NE);
         }
         outp--;
-        return L_NOT;
+        return remember_lex_token(L_NOT);
       case ':':
         if (*outp++ == ':') {
-          return L_COLON_COLON;
+          return remember_lex_token(L_COLON_COLON);
         }
         outp--;
-        return ':';
+        return remember_lex_token(':');
       case '.':
         if (*outp++ == '.') {
           if (*outp++ == '.') {
-            return L_DOT_DOT_DOT;
+            return remember_lex_token(L_DOT_DOT_DOT);
           }
           outp--;
-          return L_RANGE;
+          return remember_lex_token(L_RANGE);
         }
         outp--;
-        return L_DOT;
+        return remember_lex_token(L_DOT);
       case '#':
         if (*(outp - 2) == '\n') {
           char *sp = nullptr;
@@ -2404,7 +2716,7 @@ int yylex() {
           lexerror("Illegal character constant");
           yylval.number = 0;
         }
-        return L_NUMBER;
+        return remember_lex_token(L_NUMBER);
       case '@': {
         int rc;
         int tmp;
@@ -2423,13 +2735,13 @@ int yylex() {
           if (rc > 0) {
             /* outp is pointing at "({" for histortical reasons */
             outp += 2;
-            return L_ARRAY_OPEN;
+            return remember_lex_token(L_ARRAY_OPEN);
           } else if (rc == -1) {
             lexerror("End of file in array block");
-            return YYEOF;
+            return remember_lex_token(YYEOF);
           } else { /* if rc == -2 */
             lexerror("Array block exceeded maximum length");
-            return YYerror;
+            return remember_lex_token(YYerror);
           }
         } else {
           rc = get_text_block(terminator);
@@ -2451,10 +2763,10 @@ int yylex() {
             n = strlen(outp) + 1;
             outp += n;
 
-            return L_STRING;
+            return remember_lex_token(L_STRING);
           } else if (rc == -1) {
             lexerror("End of file in text block");
-            return YYEOF;
+            return remember_lex_token(YYEOF);
           } else { /* if (rc == -2) */
             lexerror("Text block exceeded maximum length");
             break;
@@ -2462,16 +2774,16 @@ int yylex() {
         }
       } break;
       case '"':
-        return parseStringLiteral(c);
+        return remember_lex_token(parseStringLiteral(c));
       case '0':
         c = *outp++;
         if (c == 'X' || c == 'x') {
           yyp = yytext;
-          return parseHexIntegerLiteral(c);
+          return remember_lex_token(parseHexIntegerLiteral(c));
         } 
         if (c == 'B' || c == 'b') {
           yyp = yytext;
-          return parseBinaryIntegerLiteral(c);           
+        return remember_lex_token(parseBinaryIntegerLiteral(c));
         }
         outp--;
         c = '0';
@@ -2517,16 +2829,16 @@ int yylex() {
           yylval.real = strtod(yytext, &endptr);
           if (endptr != yyp) {
             yyerror("Invalid float literal: %s", std::string(yytext, yyp - yytext).c_str());
-            return YYerror;
+            return remember_lex_token(YYerror);
           }
-          return L_REAL;
+          return remember_lex_token(L_REAL);
         }
         yylval.number = strtoll(yytext, &endptr, 10);
         if (endptr != yyp) {
           yyerror("Invalid integer literal: %s", std::string(yytext, yyp - yytext).c_str());
-          return YYerror;
+          return remember_lex_token(YYerror);
         }
-        return L_NUMBER;
+        return remember_lex_token(L_NUMBER);
       }
       default:
         if (isalpha(c) || c == '_') {
@@ -2582,10 +2894,10 @@ int yylex() {
                     function_flag = 0;
                     add_input(yytext);
                     push_function_context();
-                    return L_FUNCTION_OPEN;
+                    return remember_lex_token(L_FUNCTION_OPEN);
                   }
                   yylval.number = ihe->sem_value;
-                  return ihe->token & TOKEN_MASK;
+                  return remember_lex_token(ihe->token & TOKEN_MASK);
                 }
                 if (function_flag) {
                   int val;
@@ -2604,16 +2916,16 @@ int yylex() {
                    * wrong.  But that is almost pathological.
                    */
                   if (c != ':' && c != ',') {
-                    return old_func();
+                    return remember_lex_token(old_func());
                   }
                   if ((val = ihe->dn.local_num) >= 0) {
                     if (c == ',') {
-                      return old_func();
+                      return remember_lex_token(old_func());
                     }
                     yylval.number = (val << 8) | FP_L_VAR;
                   } else if ((val = ihe->dn.global_num) >= 0) {
                     if (c == ',') {
-                      return old_func();
+                      return remember_lex_token(old_func());
                     }
                     yylval.number = (val << 8) | FP_G_VAR;
                   } else if ((val = ihe->dn.function_num) >= 0) {
@@ -2623,15 +2935,15 @@ int yylex() {
                   } else if ((val = ihe->dn.efun_num) >= 0) {
                     yylval.number = (val << 8) | FP_EFUN;
                   } else {
-                    return old_func();
+                    return remember_lex_token(old_func());
                   }
-                  return L_NEW_FUNCTION_OPEN;
+                  return remember_lex_token(L_NEW_FUNCTION_OPEN);
                 }
                 yylval.ihe = ihe;
-                return L_DEFINED_NAME;
+                return remember_lex_token(L_DEFINED_NAME);
               }
               yylval.string = scratch_copy(yytext);
-              return L_IDENTIFIER;
+              return remember_lex_token(L_IDENTIFIER);
             }
             if (function_flag) {
               function_flag = 0;
@@ -2651,7 +2963,7 @@ badlex: {
           static_cast<char>(c));
   yyerror(buff);
 #endif
-  return ' ';
+  return remember_lex_token(' ');
 }
 }
 
@@ -2680,9 +2992,9 @@ int parseBinaryIntegerLiteral(unsigned char c) {
   yylval.number = strtol(reinterpret_cast<const char *>(yytext), &endptr, 2); 
   if (endptr != yyp) {
     yyerror("Invalid binary integer literal: %s", std::string(yytext, yyp - yytext).c_str());
-    return YYerror;
+    return remember_lex_token(YYerror);
   }
-  return L_NUMBER;
+  return remember_lex_token(L_NUMBER);
 }
 
 int parseHexIntegerLiteral(unsigned char c) {
@@ -2707,9 +3019,9 @@ int parseHexIntegerLiteral(unsigned char c) {
   yylval.number = strtoll(yytext, &endptr, 16);
   if (endptr != yyp) {
     yyerror("Invalid hex integer literal: %s", std::string(yytext, yyp - yytext).c_str());
-    return YYerror;
+    return remember_lex_token(YYerror);
   }
-  return L_NUMBER;
+  return remember_lex_token(L_NUMBER);
 }
 
 int parseStringLiteral(unsigned char c) {
@@ -2724,26 +3036,26 @@ int parseStringLiteral(unsigned char c) {
     switch (c = *outp++) {
       case LEX_EOF:
         lexerror("End of file in string");
-        return YYEOF;
+        return remember_lex_token(YYEOF);
 
       case '"':
         *to++ = 0;
         if (!u8_validate(reinterpret_cast<const char *>(scr_tail + 1))) {
           lexerror("Invalid UTF8 codepoint in string literal");
-          return YYerror;
+          return remember_lex_token(YYerror);
         }
         if (!l && (to == scratch_end)) {
           char *res = scratch_large_alloc(to - scr_tail - 1);
           strcpy(res, reinterpret_cast<char *>(scr_tail + 1));
           yylval.string = res;
-          return L_STRING;
+          return remember_lex_token(L_STRING);
         }
 
         scr_last = scr_tail + 1;
         scr_tail = to;
         *to = to - scr_last;
         yylval.string = reinterpret_cast<char *>(scr_last);
-        return L_STRING;
+        return remember_lex_token(L_STRING);
 
       case '\n':
         current_line++;
@@ -2767,7 +3079,7 @@ int parseStringLiteral(unsigned char c) {
             break;
           case LEX_EOF:
             lexerror("End of file in string");
-            return YYEOF;
+            return remember_lex_token(YYEOF);
           case 'n':
             *to++ = '\n';
             break;
@@ -2943,7 +3255,7 @@ int parseStringLiteral(unsigned char c) {
     switch (c = *outp++) {
       case LEX_EOF:
         lexerror("End of file in string");
-        return YYEOF;
+        return remember_lex_token(YYEOF);
 
       case '"': {
         char *res;
@@ -2954,10 +3266,10 @@ int parseStringLiteral(unsigned char c) {
         if (!u8_validate(res)) {
           lexerror("Invalid UTF8 string");
           scratch_free(res);
-          return YYerror;
+          return remember_lex_token(YYerror);
         }
         yylval.string = res;
-        return L_STRING;
+        return remember_lex_token(L_STRING);
       }
 
       case '\n':
@@ -2982,7 +3294,7 @@ int parseStringLiteral(unsigned char c) {
             break;
           case LEX_EOF:
             lexerror("End of file in string");
-            return YYEOF;
+            return remember_lex_token(YYEOF);
           case 'n':
             *yyp++ = '\n';
             break;
@@ -3067,10 +3379,10 @@ int parseStringLiteral(unsigned char c) {
     if (!u8_validate(res)) {
       lexerror("Invalid UTF8 string");
       scratch_free(res);
-      return YYerror;
+      return remember_lex_token(YYerror);
     }
     yylval.string = res;
-    return L_STRING;
+    return remember_lex_token(L_STRING);
   }
 }
 
@@ -3335,6 +3647,14 @@ void start_new_file(std::unique_ptr<LexStream> stream) {
   current_line = 1;
   current_line_base = 0;
   current_line_saved = 0;
+  pending_token_location = make_error_location(nullptr, 0, 0);
+  current_lookahead_location = make_error_location(nullptr, 0, 0);
+  last_non_eof_token_location = make_error_location(nullptr, 0, 0);
+  previous_non_eof_token_location = make_error_location(nullptr, 0, 0);
+  diagnostic_anchor_stack.clear();
+  diagnostic_override_stack.clear();
+  pending_token_start = nullptr;
+  pending_line_start = nullptr;
   function_flag = 0;
 
   auto glf = CONFIG_STR(__GLOBAL_INCLUDE_FILE__);
@@ -3506,7 +3826,7 @@ static void init_instrs() {
   add_instr_name("??", 0, F_NULLISH, -1);
 #endif
 #ifdef F_NULLISH_EQ
-  add_instr_name("??=", 0, F_NULLISH_EQ, -1);
+  add_instr_name("?" "?=", 0, F_NULLISH_EQ, -1);
 #endif
 #ifdef F_ASSIGN_VALUE
   add_instr_name("assign_value", 0, F_ASSIGN_VALUE, -1);

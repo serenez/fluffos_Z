@@ -65,11 +65,24 @@ event_base *init_backend() {
   event_enable_debug_mode();
 #endif
 #ifdef _WIN32
-  evthread_use_windows_threads();
+  auto thread_init_result = evthread_use_windows_threads();
+  if (thread_init_result != 0) {
+    debug_message("init_backend: evthread_use_windows_threads failed: %d\n", thread_init_result);
+  }
 #else
   evthread_use_pthreads();
 #endif
   g_event_base = event_base_new();
+  if (g_event_base == nullptr) {
+    debug_message("init_backend: event_base_new failed.\n");
+    auto methods = event_get_supported_methods();
+    if (methods != nullptr) {
+      for (int i = 0; methods[i] != nullptr; i++) {
+        debug_message("init_backend: supported method: %s\n", methods[i]);
+      }
+    }
+    return nullptr;
+  }
   debug_message("Event backend in use: %s\n", event_base_get_method(g_event_base));
   return g_event_base;
 }

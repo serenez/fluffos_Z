@@ -47,6 +47,7 @@ const SIDEBAR = [
         items: [
             {text: 'Concepts', link: '/concepts/'},
             {text: 'Notes', link: '/driver/'},
+            {text: 'Review 2026-03-24', link: '/driver/uncommitted_review_2026_03_24.html'},
         ]
     },
     {

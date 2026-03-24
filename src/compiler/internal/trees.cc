@@ -418,8 +418,16 @@ parse_node_t *insert_pop_value(parse_node_t *expr) {
   return replacement;
 }
 
+static bool is_error_placeholder(parse_node_t *pn) {
+  return pn != nullptr && pn->kind == NODE_NUMBER && pn->type == TYPE_ANY &&
+         pn->v.number == std::numeric_limits<LPC_INT>::min();
+}
+
 parse_node_t *pop_value(parse_node_t *pn) {
   if (pn) {
+    if (is_error_placeholder(pn)) {
+      return nullptr;
+    }
     parse_node_t *ret = insert_pop_value(pn);
 
     if (!ret) {

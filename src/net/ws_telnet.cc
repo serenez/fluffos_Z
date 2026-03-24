@@ -120,15 +120,15 @@ int ws_telnet_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
       lwsl_info("LWS_CALLBACK_CLOSED: wsi %p\n", wsi);
 
       auto *ip = pss->user;
-      if (!ip) {
-        return -1;
+      if (ip) {
+        remove_interactive(ip->ob, 0);
+        pss->user = nullptr;
       }
 
-      remove_interactive(ip->ob, 0);
-      pss->user = nullptr;
-
-      evbuffer_free(pss->buffer);
-      pss->buffer = nullptr;
+      if (pss->buffer) {
+        evbuffer_free(pss->buffer);
+        pss->buffer = nullptr;
+      }
 
       break;
     }

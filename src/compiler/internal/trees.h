@@ -6,6 +6,7 @@
 #define _TREES_H
 
 #include "vm/internal/base/number.h"
+#include <limits>
 
 #define NODES_PER_BLOCK 256
 
@@ -147,7 +148,8 @@ typedef struct parse_node_block_s {
 #define CREATE_FOREACH(vn, ln, rn) \
   SAFE((vn) = new_node(); (vn)->kind = NODE_FOREACH; (vn)->l.expr = ln; (vn)->r.expr = rn;)
 #define CREATE_ERROR(vn) \
-  SAFE((vn) = new_node_no_line(); (vn)->kind = NODE_NUMBER; (vn)->type = TYPE_ANY;)
+  SAFE((vn) = new_node_no_line(); (vn)->kind = NODE_NUMBER; (vn)->type = TYPE_ANY; \
+       (vn)->v.number = std::numeric_limits<LPC_INT>::min();)
 #define CREATE_REAL(vn, val)                                                      \
   SAFE((vn) = new_node_no_line(); (vn)->kind = NODE_REAL; (vn)->type = TYPE_REAL; \
        (vn)->v.real = val;)

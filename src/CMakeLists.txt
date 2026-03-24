@@ -27,7 +27,10 @@ option(PACKAGE_SHA1 "sha1 package" ON)
 option(PACKAGE_SOCKETS "sockets package" ON)
 option(PACKAGE_TRIM "trim package" ON)
 option(PACKAGE_UIDS "uids package" ON)
+option(PACKAGE_MYUTIL "myutil package for utility functions" ON)
 option(PACKAGE_EXTERNAL "external package" ON)
+option(PACKAGE_GATEWAY "gateway package for Go gateway communication" ON)
+option(PACKAGE_JSON_EXTENSION "json extension package" ON)
 option(DEBUG OFF)
 option(DEBUGMALLOC ${DEBUG})
 # End of list of compile options.
@@ -117,7 +120,6 @@ if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL
     "-Werror=format-security"
     $<$<COMPILE_LANGUAGE:C>:-Werror=implicit-function-declaration>
     # Turn off some warnings from GCC.
-    "-Wno-unknown-warning-option"
     "-Wno-char-subscripts"
     "-Wno-sign-compare"
     "-Wno-unused-function"
@@ -133,6 +135,13 @@ if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL
     # Less undefined behavior
     "-fsigned-char"
     "-fwrapv")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options("-Wno-unknown-warning-option")
+  endif ()
+  if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wno-stringop-overflow>)
+    add_link_options("-Wno-stringop-overflow")
+  endif ()
 endif ()
 
 # LTO on release builds
@@ -303,7 +312,7 @@ add_custom_command(
 
 add_custom_command(
   OUTPUT "packages.fullspec"
-  COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_packages_genfiles.sh" "${CMAKE_CURRENT_SOURCE_DIR}/../" "${CMAKE_CXX_COMPILER}" "-I${CMAKE_CURRENT_BINARY_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_packages_genfiles.sh" "${CMAKE_CURRENT_SOURCE_DIR}/../" "${CMAKE_CXX_COMPILER}" "-I${CMAKE_CURRENT_BINARY_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}"
   DEPENDS "tools/build_packages_genfiles.sh" "base/internal/options_incl.h"
 )
 file(GLOB ALL_SPEC_FILES files "packages/*/*.spec")
@@ -576,4 +585,16 @@ if(${GTEST_FOUND})
 endif()
 
 # Must keep this line at the end, so we get all the variables.
+string(TOUPPER "${CMAKE_BUILD_TYPE}" FLUFFOS_BUILD_TYPE_UPPER)
+set(CONFIGURED_CXXFLAGS "${CMAKE_CXX_FLAGS}")
+if (DEFINED CMAKE_CXX_FLAGS_${FLUFFOS_BUILD_TYPE_UPPER})
+  string(APPEND CONFIGURED_CXXFLAGS " ${CMAKE_CXX_FLAGS_${FLUFFOS_BUILD_TYPE_UPPER}}")
+endif ()
+if (CMAKE_CXX_STANDARD)
+  string(APPEND CONFIGURED_CXXFLAGS " -std=c++${CMAKE_CXX_STANDARD}")
+endif ()
+string(STRIP "${CONFIGURED_CXXFLAGS}" CONFIGURED_CXXFLAGS)
+string(REPLACE "\\" "\\\\" CONFIGURED_CXXFLAGS_ESCAPED "${CONFIGURED_CXXFLAGS}")
+string(REPLACE "\"" "\\\"" CONFIGURED_CXXFLAGS_ESCAPED "${CONFIGURED_CXXFLAGS_ESCAPED}")
+
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)

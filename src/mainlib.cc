@@ -37,6 +37,11 @@
 #include "backend.h"                             // for backend();
 #include "thirdparty/backward-cpp/backward.hpp"  // for backtracing
 
+#ifdef PACKAGE_GATEWAY
+#include "packages/gateway/gateway.h"
+#include "base/internal/rc.h"
+#endif
+
 // from lex.cc
 extern void print_all_predefines();
 
@@ -236,12 +241,13 @@ void init_win32() {
     exit(-1);
   }
 
+  SetConsoleCP(65001);
   // try to get UTF-8 output
   SetConsoleOutputCP(65001);
 #endif
 }
 
-struct event_base *init_main(std::string_view config_file) {
+struct event_base *init_main(std::string_view config_file, bool require_backend) {
 #ifdef _WIN32
   init_win32();
 #endif
@@ -262,7 +268,15 @@ struct event_base *init_main(std::string_view config_file) {
 
   // Initialize libevent, This should be done before executing LPC.
   auto *base = init_backend();
-  init_dns_event_base(base);
+  if (base == nullptr) {
+    if (require_backend) {
+      debug_message("Fatal: failed to initialize event backend.\n");
+      return nullptr;
+    }
+    debug_message("Warning: event backend is unavailable, continuing in offline mode.\n");
+  } else {
+    init_dns_event_base(base);
+  }
 
   // Initialize VM layer
   vm_init();
@@ -318,13 +332,13 @@ int driver_main(int argc, char **argv) {
   print_rlimit();
   print_sep();
 
+#ifndef _WIN32
   // backward-cpp doesn't yet work on win32
-
-  // register crash handlers
   backward::SignalHandling sh;
   if (!sh.loaded()) {
     debug_message("Warning: Signal handler installation failed, not backtrace on crash!\n");
   }
+#endif
 
   // First look for '--tracing' to decide if enable tracing from driver start.
   std::string trace_log;
@@ -380,6 +394,9 @@ int driver_main(int argc, char **argv) {
   }
 
   auto *base = init_main(config_file);
+  if (base == nullptr) {
+    return -1;
+  }
 
   debug_message("==== Runtime Config Table ====\n");
   print_rc_table();
@@ -435,6 +452,18 @@ int driver_main(int argc, char **argv) {
   if (!init_user_conn()) {
     exit(1);
   }
+
+#ifdef PACKAGE_GATEWAY
+  // Initialize Gateway if configured
+  extern void init_gateway(void);
+  init_gateway();
+#endif
+
+#ifdef PACKAGE_MYUTIL
+  // Initialize MyUtil (Utility functions)
+  extern void init_myutil(void);
+  init_myutil();
+#endif
 
   debug_message("Initializations complete.\n\n");
   setup_signal_handlers();

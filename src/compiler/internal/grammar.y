@@ -21,6 +21,136 @@
 #include "include/opcodes_extra.h"
 
 extern char *outp;
+void grammar_yyerror(const char *fmt, ...);
+void grammar_yywarn(const char *fmt, ...);
+
+static int push_named_diagnostic_override(const char *symbol) {
+  auto location = align_error_location_to_symbol(query_last_non_eof_token_location(), symbol);
+  if (location.file == nullptr || location.line <= 0) {
+    return -1;
+  }
+  return push_diagnostic_override(std::move(location));
+}
+
+static int push_declaration_diagnostic_override(int anchor_id, const char *symbol) {
+  auto location = align_error_location_to_symbol(query_diagnostic_anchor(anchor_id), symbol);
+  if (location.file == nullptr || location.line <= 0) {
+    return -1;
+  }
+  return push_diagnostic_override(std::move(location));
+}
+
+static const char *query_local_symbol(int index) {
+  if (index < 0 || index >= current_number_of_locals || locals_ptr[index].ihe == nullptr) {
+    return nullptr;
+  }
+  return locals_ptr[index].ihe->name;
+}
+
+static const char *query_global_symbol(int index) {
+  auto num_globals = mem_block[A_VAR_NAME].current_size / sizeof(char *);
+  if (index < 0 || index >= num_globals) {
+    return nullptr;
+  }
+  return *(reinterpret_cast<const char **>(mem_block[A_VAR_NAME].block) + index);
+}
+
+static const char *query_member_symbol(parse_node_t *node) {
+  if (node == nullptr || node->kind != NODE_UNARY_OP_1 ||
+      (node->v.number != F_MEMBER && node->v.number != F_MEMBER_LVALUE) ||
+      node->r.expr == nullptr || !IS_CLASS(node->r.expr->type)) {
+    return nullptr;
+  }
+
+  auto class_def = CLASS(CLASS_IDX(node->r.expr->type));
+  if (node->l.number < 0 || node->l.number >= class_def->size) {
+    return nullptr;
+  }
+
+  auto members = reinterpret_cast<class_member_entry_t *>(mem_block[A_CLASS_MEMBER].block) +
+                 class_def->index;
+  return PROG_STRING(members[node->l.number].membername);
+}
+
+static compiler_error_location_t capture_lvalue_diagnostic_location(parse_node_t *node) {
+  if (node == nullptr) {
+    return query_previous_non_eof_token_location();
+  }
+
+  const char *symbol = nullptr;
+  switch (node->kind) {
+    case NODE_PARAMETER:
+    case NODE_PARAMETER_LVALUE:
+      symbol = query_local_symbol(node->v.number);
+      break;
+    case NODE_OPCODE_1:
+      if (node->v.number == F_LOCAL || node->v.number == F_LOCAL_LVALUE ||
+          node->v.number == F_REF || node->v.number == F_REF_LVALUE) {
+        symbol = query_local_symbol(node->l.number);
+      } else if (node->v.number == F_GLOBAL || node->v.number == F_GLOBAL_LVALUE) {
+        symbol = query_global_symbol(node->l.number);
+      }
+      break;
+    case NODE_UNARY_OP_1:
+      symbol = query_member_symbol(node);
+      if (symbol == nullptr) {
+        return capture_lvalue_diagnostic_location(node->r.expr);
+      }
+      break;
+    case NODE_BINARY_OP:
+      return capture_lvalue_diagnostic_location(node->r.expr);
+    case NODE_TERNARY_OP:
+      if (node->r.expr != nullptr) {
+        return capture_lvalue_diagnostic_location(node->r.expr->r.expr);
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (symbol != nullptr && *symbol != '\0') {
+    return query_symbol_anchor_before_current_location(symbol);
+  }
+  return query_previous_non_eof_token_location();
+}
+
+static compiler_error_location_t capture_argument_diagnostic_location() {
+  auto is_delimiter_location = [](const compiler_error_location_t &location) {
+    if (location.file == nullptr || location.line <= 0 || location.line_text.empty() ||
+        location.column < 0 ||
+        location.column >= static_cast<int>(location.line_text.size())) {
+      return false;
+    }
+
+    switch (location.line_text[location.column]) {
+      case ',':
+      case ')':
+      case ':':
+      case ']':
+      case '}':
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  auto current = query_last_non_eof_token_location();
+  auto previous = query_previous_non_eof_token_location();
+
+  if (current.file != nullptr && current.line > 0 && !is_delimiter_location(current)) {
+    return current;
+  }
+  if (previous.file != nullptr && previous.line > 0 && !is_delimiter_location(previous)) {
+    return previous;
+  }
+  if (current.file != nullptr && current.line > 0) {
+    return current;
+  }
+  return previous;
+}
+
+#define yyerror grammar_yyerror
+#define yywarn grammar_yywarn
 
 /*
  * This is the grammar definition of LPC, and its parse tree generator.
@@ -147,6 +277,15 @@ int yyparse (void);
     uint16_t save_current_type;
     uint16_t save_exact_types;
   } func_block; /* 8 */
+  struct {
+    int context;
+    int num_refs;
+    int callee_anchor;
+  } call_state; /* 12 */
+  struct {
+    char *name;
+    int anchor;
+  } anchored_string; /* 12 */
 }
 
 
@@ -189,7 +328,8 @@ int yyparse (void);
 
 /* holds an identifier or some sort */
 %type <string> L_IDENTIFIER L_EFUN function_name identifier
-%type <string> new_local_name
+%type <anchored_string> anchored_identifier
+%type <anchored_string> new_local_name
 
 /* The following return a parse node */
 %type <node> optional_default_arg_value
@@ -263,10 +403,34 @@ identifier:
   |  L_IDENTIFIER
 ;
 
+anchored_identifier:
+  L_IDENTIFIER
+                                            {
+                                              $$.name = $1;
+                                              $$.anchor =
+                                                  push_diagnostic_anchor(query_last_non_eof_token_location());
+                                            }
+  | L_DEFINED_NAME
+                                            {
+                                              $$.name = scratch_copy($1->name);
+                                              $$.anchor =
+                                                  push_diagnostic_anchor(query_last_non_eof_token_location());
+                                            }
+;
+
 function:
-  type optional_star identifier   { $type = rule_func_type($type, $optional_star, $identifier); }
-    '(' argument ')'              { $<number>$ = rule_func_proto($type, $optional_star, &$identifier, $argument); }
-      block_or_semi               { rule_func(&$$, $type, $optional_star, $identifier, $argument, &$<number>8, &$block_or_semi); }
+  type optional_star anchored_identifier
+                                  { $type = rule_func_type($type, $optional_star,
+                                                           $anchored_identifier.name,
+                                                           $anchored_identifier.anchor); }
+    '(' argument ')'              { $<number>$ = rule_func_proto($type, $optional_star,
+                                                                 &$anchored_identifier.name,
+                                                                 $argument,
+                                                                 $anchored_identifier.anchor); }
+      block_or_semi               { rule_func(&$$, $type, $optional_star,
+                                              $anchored_identifier.name, $argument,
+                                              &$<number>8, &$block_or_semi,
+                                              $anchored_identifier.anchor); }
 
 
 def:
@@ -300,15 +464,26 @@ modifier_change:
 ;
 
 member_name:
-  optional_star identifier
+  optional_star anchored_identifier
                                   {
+                                    auto member_location =
+                                        query_diagnostic_anchor($2.anchor);
+                                    auto member_override =
+                                        (member_location.file != nullptr &&
+                                         member_location.line > 0)
+                                            ? push_diagnostic_override(member_location)
+                                            : -1;
                                     /* At this point, the current_type here is only a basic_type */
                                     /* and cannot be unused yet - Sym */
 
                                     if (current_type == TYPE_VOID)
                                       yyerror("Illegal to declare class member of type void.");
-                                    add_local_name($2, current_type | $1);
-                                    scratch_free($2);
+                                    add_local_name($2.name, current_type | $1, nullptr, $2.anchor);
+                                    if (member_override != -1) {
+                                      pop_diagnostic_override(member_override);
+                                    }
+                                    pop_diagnostic_anchor($2.anchor);
+                                    scratch_free($2.name);
                                   }
 ;
 
@@ -324,18 +499,34 @@ member_list: %empty
 ;
 
 type_decl:
-  type_modifier_list L_CLASS identifier '{'  { $<ihe>2 = rule_define_class(&$<number>$, $3); }
-    member_list '}'                          { rule_define_class_members($<ihe>2, $<number>5); $$ = 0; }
+  type_modifier_list L_CLASS anchored_identifier '{'
+                                            { $<ihe>2 = rule_define_class(&$<number>$, $3.name,
+                                                                          $3.anchor); }
+    member_list '}'
+                                            { rule_define_class_members($<ihe>2, $<number>5,
+                                                                        $3.anchor); $$ = 0; }
 ;
 
 new_local_name:
   L_IDENTIFIER
+                                            {
+                                              $$.name = $1;
+                                              $$.anchor =
+                                                  push_diagnostic_anchor(query_last_non_eof_token_location());
+                                            }
   | L_DEFINED_NAME
                                             {
                                               if ($1->dn.local_num != -1) {
+                                                auto declaration_override =
+                                                    push_named_diagnostic_override($1->name);
                                                 yyerror("Illegal to redeclare local name '%s'", $1->name);
+                                                if (declaration_override != -1) {
+                                                  pop_diagnostic_override(declaration_override);
+                                                }
                                               }
-                                              $$ = scratch_copy($1->name);
+                                              $$.name = scratch_copy($1->name);
+                                              $$.anchor =
+                                                  push_diagnostic_anchor(query_last_non_eof_token_location());
                                             }
 ;
 
@@ -344,7 +535,12 @@ atomic_type:
   | L_CLASS L_DEFINED_NAME
                                             {
                                               if ($2->dn.class_num == -1) {
+                                                auto declaration_override =
+                                                    push_named_diagnostic_override($2->name);
                                                 yyerror("Undefined class '%s'", $2->name);
+                                                if (declaration_override != -1) {
+                                                  pop_diagnostic_override(declaration_override);
+                                                }
                                                 $$ = TYPE_ANY;
                                               } else {
                                                 $$ = $2->dn.class_num | TYPE_MOD_CLASS;
@@ -352,7 +548,12 @@ atomic_type:
                                             }
   | L_CLASS L_IDENTIFIER
                                             {
+                                              auto declaration_override =
+                                                  push_named_diagnostic_override($2);
                                               yyerror("Undefined class '%s'", $2);
+                                              if (declaration_override != -1) {
+                                                pop_diagnostic_override(declaration_override);
+                                              }
                                               $$ = TYPE_ANY;
                                             }
 ;
@@ -403,19 +604,30 @@ new_arg:
                                               }
   | arg_type optional_star new_local_name optional_default_arg_value
                                               {
+                                                auto declaration_override =
+                                                    push_declaration_diagnostic_override($3.anchor, $3.name);
                                                 if ($1 == TYPE_VOID)
                                                   yyerror("Illegal to declare argument of type void.");
-                                                add_local_name($3, $1 | $2, $optional_default_arg_value);
-                                                scratch_free($3);
+                                                add_local_name($3.name, $1 | $2,
+                                                               $optional_default_arg_value, $3.anchor);
+                                                if (declaration_override != -1) {
+                                                  pop_diagnostic_override(declaration_override);
+                                                }
+                                                scratch_free($3.name);
                                                 $$ = $1 | $2;
                                               }
   | new_local_name
                                               {
+                                                auto declaration_override =
+                                                    push_declaration_diagnostic_override($1.anchor, $1.name);
                                                 if (exact_types) {
                                                   yyerror("Missing type for argument");
                                                 }
-                                                add_local_name($1, TYPE_ANY);
-                                                scratch_free($1);
+                                                add_local_name($1.name, TYPE_ANY, nullptr, $1.anchor);
+                                                if (declaration_override != -1) {
+                                                  pop_diagnostic_override(declaration_override);
+                                                }
+                                                scratch_free($1.name);
                                                 $$ = TYPE_ANY;
                                               }
 ;
@@ -518,8 +730,13 @@ name_list:
 ;
 
 new_name:
-  optional_star identifier
+  optional_star anchored_identifier
     {
+      auto declaration_location = query_diagnostic_anchor($2.anchor);
+      auto declaration_override =
+          (declaration_location.file != nullptr && declaration_location.line > 0)
+              ? push_diagnostic_override(declaration_location)
+              : -1;
       if (current_type & (FUNC_VARARGS << 16)){
         yyerror("Illegal to declare varargs variable.");
         current_type &= ~(FUNC_VARARGS << 16);
@@ -540,13 +757,22 @@ new_name:
       if ((current_type & ~DECL_MODS) == TYPE_VOID)
         yyerror("Illegal to declare global variable of type void.");
 
-      define_new_variable($2, current_type | $1);
-      scratch_free($2);
+      define_new_variable($2.name, current_type | $1, $2.anchor);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
+      pop_diagnostic_anchor($2.anchor);
+      scratch_free($2.name);
     }
-  | optional_star identifier L_ASSIGN expr0
+  | optional_star anchored_identifier L_ASSIGN expr0
     {
       parse_node_t *expr, *newnode;
       int type;
+      auto declaration_location = query_diagnostic_anchor($2.anchor);
+      auto declaration_override =
+          (declaration_location.file != nullptr && declaration_location.line > 0)
+              ? push_diagnostic_override(declaration_location)
+              : -1;
 
       if (current_type & (FUNC_VARARGS << 16)){
         yyerror("Illegal to declare varargs variable.");
@@ -581,7 +807,7 @@ new_name:
           p = strput(buff, end, "Type mismatch ");
           p = get_two_types(p, end, type, $4->type);
           p = strput(p, end, " when initializing ");
-          p = strput(p, end, $2);
+          p = strput(p, end, $2.name);
           yyerror(buff);
         }
       } else type = 0;
@@ -589,11 +815,15 @@ new_name:
 
       CREATE_BINARY_OP(expr, F_VOID_ASSIGN, 0, $4, 0);
       CREATE_OPCODE_1(expr->r.expr, F_GLOBAL_LVALUE, 0,
-          define_new_variable($2, current_type | $1));
+          define_new_variable($2.name, current_type | $1, $2.anchor));
       newnode = comp_trees[TREE_INIT];
       CREATE_TWO_VALUES(comp_trees[TREE_INIT], 0,
           newnode, expr);
-      scratch_free($2);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
+      pop_diagnostic_anchor($2.anchor);
+      scratch_free($2.name);
     }
 ;
 
@@ -617,8 +847,6 @@ local_declarations:
     }
   | local_declarations basic_type
     {
-      if ($2 == TYPE_VOID)
-        yyerror("Illegal to declare local variable of type void.");
       /* can't do this in basic_type b/c local_name_list contains
        * expr0 which contains cast which contains basic_type
        */
@@ -636,23 +864,42 @@ local_declarations:
 new_local_def:
   optional_star new_local_name
     {
+      auto declaration_override =
+          push_declaration_diagnostic_override($2.anchor, $2.name);
+      bool suppress_unused_warning = false;
+      if (current_type == TYPE_VOID) {
+        yyerror("Illegal to declare local variable of type void.");
+        suppress_unused_warning = true;
+      }
       if (current_type & LOCAL_MOD_REF) {
         yyerror("Illegal to declare local variable as reference");
         current_type &= ~LOCAL_MOD_REF;
+        suppress_unused_warning = true;
       }
-      add_local_name($2, current_type | $1 | LOCAL_MOD_UNUSED);
-
-      scratch_free($2);
+      add_local_name($2.name, current_type | $1 | LOCAL_MOD_UNUSED, nullptr, $2.anchor,
+                     suppress_unused_warning);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
+      scratch_free($2.name);
       $$ = 0;
     }
   | optional_star new_local_name L_ASSIGN expr0
     {
+      auto declaration_override =
+          push_declaration_diagnostic_override($2.anchor, $2.name);
+      bool suppress_unused_warning = false;
+      if (current_type == TYPE_VOID) {
+        yyerror("Illegal to declare local variable of type void.");
+        suppress_unused_warning = true;
+      }
       int type = (current_type | $1) & ~DECL_MODS;
 
       if (current_type & LOCAL_MOD_REF) {
         yyerror("Illegal to declare local variable as reference");
         current_type &= ~LOCAL_MOD_REF;
         type &= ~LOCAL_MOD_REF;
+        suppress_unused_warning = true;
       }
 
       if ($3 != F_ASSIGN)
@@ -665,7 +912,7 @@ new_local_def:
         p = strput(buff, end, "Type mismatch ");
         p = get_two_types(p, end, type, $4->type);
         p = strput(p, end, " when initializing ");
-        p = strput(p, end, $2);
+        p = strput(p, end, $2.name);
 
         yyerror(buff);
       }
@@ -673,19 +920,31 @@ new_local_def:
       $4 = do_promotions($4, type);
 
       CREATE_UNARY_OP_1($$, F_VOID_ASSIGN_LOCAL, 0, $4,
-          add_local_name($2, current_type | $1 | LOCAL_MOD_UNUSED));
-      scratch_free($2);
+          add_local_name($2.name, current_type | $1 | LOCAL_MOD_UNUSED, nullptr, $2.anchor,
+                         suppress_unused_warning));
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
+      scratch_free($2.name);
     }
 ;
 
 single_new_local_def:
   arg_type optional_star new_local_name
     {
-      if ($1 == TYPE_VOID)
+      auto declaration_override =
+          push_declaration_diagnostic_override($3.anchor, $3.name);
+      bool suppress_unused_warning = false;
+      if ($1 == TYPE_VOID) {
         yyerror("Illegal to declare local variable of type void.");
+        suppress_unused_warning = true;
+      }
 
-      $$ = add_local_name($3, $1 | $2);
-      scratch_free($3);
+      $$ = add_local_name($3.name, $1 | $2, nullptr, $3.anchor, suppress_unused_warning);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
+      scratch_free($3.name);
     }
 ;
 
@@ -693,6 +952,10 @@ single_new_local_def_with_init:
   single_new_local_def L_ASSIGN expr0
     {
       int type = type_of_locals_ptr[$1];
+      auto declaration_override =
+          (locals_ptr[$1].declaration_location != nullptr)
+              ? push_diagnostic_override(*locals_ptr[$1].declaration_location)
+              : -1;
 
       if (type & LOCAL_MOD_REF) {
         yyerror("Illegal to declare local variable as reference");
@@ -718,6 +981,9 @@ single_new_local_def_with_init:
       /* this is an expression */
       CREATE_BINARY_OP($$, F_ASSIGN, 0, $3, 0);
       CREATE_OPCODE_1($$->r.expr, F_LOCAL_LVALUE, 0, $1);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
     }
 ;
 
@@ -739,8 +1005,6 @@ local_name_list:
 local_declaration_statement:
   basic_type
     {
-      if ($1 == TYPE_VOID)
-        yyerror("Illegal to declare local variable of type void.");
       current_type = $1;
     }
   local_name_list ';'
@@ -1272,6 +1536,7 @@ expr0:
     {
       parse_node_t *l = $1, *r = $3;
       int opcode = $2;
+      auto lvalue_location = capture_lvalue_diagnostic_location(l);
 
       if (opcode == F_LOR_EQ || opcode == F_LAND_EQ || opcode == F_NULLISH_EQ) {
         if (exact_types && !compatible_types(r->type, l->type)) {
@@ -1281,7 +1546,7 @@ expr0:
           p = strput(buf, end, "Bad assignment ");
           p = get_two_types(p, end, l->type, r->type);
           p = strput(p, end, ".");
-          yyerror(buf);
+          yyerror_at(lvalue_location, "%s", buf);
         }
         CREATE_LOGICAL_ASSIGN($$, opcode, l, r);
       } else {
@@ -1301,7 +1566,7 @@ expr0:
           p = strput(buf, end, "Bad assignment ");
           p = get_two_types(p, end, l->type, r->type);
           p = strput(p, end, ".");
-          yyerror(buf);
+          yyerror_at(lvalue_location, "%s", buf);
         }
 
         if (opcode == F_ASSIGN)
@@ -2179,10 +2444,12 @@ expr_list_node:
   expr0
     {
       CREATE_EXPR_NODE($$, $1, 0);
+      remember_parse_node_diagnostic_location($$, capture_argument_diagnostic_location());
     }
   | expr0 L_DOT_DOT_DOT
     {
       CREATE_EXPR_NODE($$, $1, 1);
+      remember_parse_node_diagnostic_location($$, capture_argument_diagnostic_location());
     }
 ;
 
@@ -2849,13 +3116,18 @@ expr4:
                                 char buf[256];
                                 char *end = EndOf(buf);
                                 char *p;
+                                auto argument_location = query_parse_node_diagnostic_location(enode);
 
                                 p = strput(buf, end, "Bad argument ");
                                 p = strput_int(p, end, argn+1);
                                 p = strput(p, end, " to efun ");
                                 p = strput(p, end, predefs[f].word);
                                 p = strput(p, end, "()");
-                                yyerror(buf);
+                                if (argument_location.file != nullptr && argument_location.line > 0) {
+                                  yyerror_at(argument_location, "%s", buf);
+                                } else {
+                                  yyerror(buf);
+                                }
                               } else {
                                 /* this little section necessary b/c in the
                                    case float | int we dont want to do
@@ -3127,11 +3399,15 @@ function_call:
         char buf[256];
         char *end = EndOf(buf);
         char *p;
+        auto declaration_override = push_named_diagnostic_override($4->name);
 
         p = strput(buf, end, "Undefined class '");
         p = strput(p, end, $4->name);
         p = strput(p, end, "'");
         yyerror(buf);
+        if (declaration_override != -1) {
+          pop_diagnostic_override(declaration_override);
+        }
         CREATE_ERROR($$);
         node = $5;
         while (node) {
@@ -3160,11 +3436,15 @@ function_call:
       char buf[256];
       char *end = EndOf(buf);
       char *p;
+      auto declaration_override = push_named_diagnostic_override($4);
 
       p = strput(buf, end, "Undefined class '");
       p = strput(p, end, $4);
       p = strput(p, end, "'");
       yyerror(buf);
+      if (declaration_override != -1) {
+        pop_diagnostic_override(declaration_override);
+      }
       CREATE_ERROR($$);
       node = $5;
       while (node) {
@@ -3174,16 +3454,24 @@ function_call:
     }
   | L_DEFINED_NAME '('
     {
-      $<number>$ = context;
-      $<number>2 = num_refs;
+      $<call_state>$.context = context;
+      $<call_state>$.num_refs = num_refs;
+      $<call_state>$.callee_anchor =
+          push_diagnostic_anchor(query_previous_non_eof_token_location());
       context |= ARG_LIST;
     }
   expr_list ')'
     {
       int f;
       int i;
+      auto callee_location = pop_diagnostic_anchor($<call_state>3.callee_anchor);
+      auto searched_callee_location = query_symbol_anchor_before_current_location($1->name);
+      if (searched_callee_location.file != nullptr && searched_callee_location.line > 0) {
+        callee_location = searched_callee_location;
+      }
+      auto callee_override = push_diagnostic_override(callee_location);
 
-      context = $<number>3;
+      context = $<call_state>3.context;
       $$ = $4;
       if ((f = $1->dn.function_num) != -1) {
         if (current_function_context)
@@ -3289,7 +3577,7 @@ function_call:
           if (*n == ':') n++;
           p = strput(buf, end, "Undefined function ");
           p = strput(p, end, n);
-          yyerror(buf);
+          yyerror_at(callee_location, "%s", buf);
         } else {
           /*
            * Don't complain, just grok it.
@@ -3304,20 +3592,30 @@ function_call:
           $$->type = TYPE_ANY; /* just a guess */
         }
       }
-      $$ = check_refs(num_refs - $<number>2, $4, $$);
-      num_refs = $<number>2;
+      pop_diagnostic_override(callee_override);
+      $$ = check_refs(num_refs - $<call_state>3.num_refs, $4, $$);
+      num_refs = $<call_state>3.num_refs;
     }
   | function_name  '('
     {
-      $<number>$ = context;
-      $<number>2 = num_refs;
+      $<call_state>$.context = context;
+      $<call_state>$.num_refs = num_refs;
+      $<call_state>$.callee_anchor =
+          push_diagnostic_anchor(query_previous_non_eof_token_location());
       context |= ARG_LIST;
     }
   expr_list ')'
     {
       char *name = $1;
+      auto callee_location = pop_diagnostic_anchor($<call_state>3.callee_anchor);
+      const char *callee_symbol = (*name == ':') ? (strrchr(name, ':') ? strrchr(name, ':') + 1 : name) : name;
+      auto searched_callee_location = query_symbol_anchor_before_current_location(callee_symbol);
+      if (searched_callee_location.file != nullptr && searched_callee_location.line > 0) {
+        callee_location = searched_callee_location;
+      }
+      auto callee_override = push_diagnostic_override(callee_location);
 
-      context = $<number>3;
+      context = $<call_state>3.context;
       $$ = $4;
 
       if (current_function_context)
@@ -3354,7 +3652,7 @@ function_call:
             if (*n == ':') n++;
             p = strput(buf, end, "Undefined function ");
             p = strput(p, end, n);
-            yyerror(buf);
+            yyerror_at(callee_location, "%s", buf);
           } else {
             f = define_new_function(name, 0, 0, DECL_PUBLIC|FUNC_UNDEFINED, TYPE_ANY);
           }
@@ -3371,8 +3669,9 @@ function_call:
           }
         }
       }
-      $$ = check_refs(num_refs - $<number>2, $4, $$);
-      num_refs = $<number>2;
+      pop_diagnostic_override(callee_override);
+      $$ = check_refs(num_refs - $<call_state>3.num_refs, $4, $$);
+      num_refs = $<call_state>3.num_refs;
       scratch_free(name);
     }
   | expr4 '[' comma_expr ']' '('
@@ -3515,7 +3814,11 @@ efun_override:
 
       $$ = (ihe = lookup_ident($3)) ? ihe->dn.efun_num : -1;
       if ($$ == -1) {
+        auto efun_override = push_named_diagnostic_override($3);
         yyerror("Unknown efun: %s", $3);
+        if (efun_override != -1) {
+          pop_diagnostic_override(efun_override);
+        }
       } else {
         push_malloced_string(the_file_name(current_file));
         share_and_push_string($3);

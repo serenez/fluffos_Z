@@ -41,9 +41,9 @@
 #define BRED ESC + "[41m" /* Red      */
 #define BGRN ESC + "[42m" /* Green    */
 #define BYEL ESC + "[43m" /* Yellow   */
-#define BBLU ESC + "[44m" /* Blue     */
+#define BG_BLUE ESC + "[44m" /* Blue     */
 #define BMAG ESC + "[45m" /* Magenta  */
-#define BCYN ESC + "[46m" /* Cyan     */
+#define BG_CYAN ESC + "[46m" /* Cyan     */
 #define BWHT ESC + "[47m" /* White    */
 
 /* High Intensity Background Colors */
@@ -53,7 +53,7 @@
 #define HBYEL ESC + "[43;1m" /* Yellow   */
 #define HBBLU ESC + "[44;1m" /* Blue     */
 #define HBMAG ESC + "[45;1m" /* Magenta  */
-#define HBCYN ESC + "[46;1m" /* Cyan     */
+#define HBG_CYAN ESC + "[46;1m" /* Cyan     */
 #define HBWHT ESC + "[47;1m" /* White    */
 
 #define NOR ESC + "[2;37;0m" /* Puts everything back to normal */

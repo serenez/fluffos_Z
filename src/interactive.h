@@ -6,7 +6,8 @@
 
 #include "vm/vm.h"  // FIXME: for union string_or_func
 
-#define MAX_TEXT (1 * 1024 * 1024)
+//#define MAX_TEXT (1 * 1024 * 1024)
+#define MAX_TEXT (64 * 1024)
 
 #define I_NOECHO 0x1          /* input_to flag */
 #define I_NOESC 0x2           /* input_to flag */
@@ -36,6 +37,8 @@
 #define USING_COMPRESS 0x40000     /* we've negotiated compress */
 #define USING_MSP 0x80000          /* we've negotiated msp */
 #define USING_MSDP 0x100000 /* we've negotiated msdp */
+#define GATEWAY_SESSION 0x200000 /* this is a gateway session */
+#define GATEWAY_MSGPACK 0x400000 /* gateway session uses msgpack/json */
 
 // from ICU
 struct UConverter;
@@ -87,6 +90,12 @@ struct interactive_t {
 
   // TLS context
   SSL *ssl;
+
+  // Gateway session fields
+  char *gateway_session_id;    /* session ID from Go gateway */
+  char *gateway_real_ip;       /* real client IP */
+  int gateway_real_port;       /* real client port */
+  int gateway_master_fd;       /* master connection fd to gateway */
 };
 
 #endif /* INTERACTIVE_H */

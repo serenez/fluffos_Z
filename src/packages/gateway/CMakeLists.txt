@@ -1,0 +1,5 @@
+if(PACKAGE_GATEWAY)
+    add_library(package_gateway STATIC gateway.cc gateway_session.cc)
+    target_include_directories(package_gateway PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../)
+    target_link_libraries(package_gateway package_json_extension)
+endif()
