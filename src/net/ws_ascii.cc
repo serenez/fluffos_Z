@@ -101,6 +101,11 @@ int ws_ascii_callback(struct lws *wsi, enum lws_callback_reasons reason, void *u
 
       pss->user = ip;
       pss->buffer = evbuffer_new();
+      if (!pss->buffer) {
+        remove_interactive(ip->ob, 0);
+        pss->user = nullptr;
+        return -1;
+      }
 
       ip->iflags |= HANDSHAKE_COMPLETE;
       ip->lws = wsi;

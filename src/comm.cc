@@ -120,6 +120,48 @@ void maybe_schedule_user_command(interactive_t *user) {
 }
 namespace {
 
+int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, int num_bytes) {
+  int processed = 0;
+
+  memcpy(ip->text + ip->text_end, buf, num_bytes);
+  ip->text_end += num_bytes;
+
+  auto *line_start = ip->text + ip->text_start;
+  while (true) {
+    auto remaining = static_cast<size_t>((ip->text + ip->text_end) - line_start);
+    auto *newline = reinterpret_cast<char *>(memchr(line_start, '\n', remaining));
+    if (!newline) {
+      break;
+    }
+
+    ip->text_start = static_cast<int>((newline + 1) - ip->text);
+
+    auto *line_end = newline;
+    *newline = '\0';
+    if (line_end > line_start && *(line_end - 1) == '\r') {
+      *--line_end = '\0';
+    }
+
+    if (!(ip->ob->flags & O_DESTRUCTED)) {
+      auto *str = new_string(line_end - line_start, "PORT_ASCII");
+      memcpy(str, line_start, line_end - line_start + 1);
+      push_malloced_string(str);
+      set_eval(max_eval_cost);
+      safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
+    }
+
+    processed++;
+    if (ip->text_start == ip->text_end) {
+      interactive_reset_text(ip);
+      break;
+    }
+
+    line_start = ip->text + ip->text_start;
+  }
+
+  return processed;
+}
+
 void on_user_command(evutil_socket_t fd, short what, void *arg) {
   debug(event, "User has an full command ready: %d:%s%s%s%s \n", (int)fd,
         (what & EV_TIMEOUT) ? " timeout" : "", (what & EV_READ) ? " read" : "",
@@ -289,6 +331,12 @@ interactive_t *new_user(port_def_t *port, evutil_socket_t fd, sockaddr *addr,
   // Command handler
   auto *base = evconnlistener_get_base(port->ev_conn);
   user->ev_command = evtimer_new(base, on_user_command, user);
+  if (!user->ev_command) {
+    user_del(user);
+    interactive_free_text(user);
+    FREE(user);
+    return nullptr;
+  }
 
   return user;
 }
@@ -909,39 +957,9 @@ void get_user_data(interactive_t *ip) {
       break;
     }
 
-    case PORT_TYPE_ASCII: {
-      char *nl, *p;
-
-      memcpy(ip->text + ip->text_end, buf, num_bytes);
-      ip->text_end += num_bytes;
-
-      p = ip->text + ip->text_start;
-      while ((nl = reinterpret_cast<char *>(memchr(p, '\n', ip->text_end - ip->text_start)))) {
-        ip->text_start = (nl + 1) - ip->text;
-
-        *nl = 0;
-        if (*(nl - 1) == '\r') {
-          *--nl = 0;
-        }
-
-        if (!(ip->ob->flags & O_DESTRUCTED)) {
-          char *str;
-
-          str = new_string(nl - p, "PORT_ASCII");
-          memcpy(str, p, nl - p + 1);
-          push_malloced_string(str);
-          set_eval(max_eval_cost);
-          safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
-        }
-
-        if (ip->text_start == ip->text_end) {
-          interactive_reset_text(ip);
-          break;
-        }
-
-        p = nl + 1;
-      }
-    } break;
+    case PORT_TYPE_ASCII:
+      process_ascii_chunk_internal(ip, buf, num_bytes);
+      break;
 
     case PORT_TYPE_BINARY: {
       buffer_t *buffer;
@@ -1179,6 +1197,10 @@ static char *get_user_command(interactive_t *ip) {
 } /* get_user_command() */
 
 char *extract_first_command_for_test(interactive_t *ip) { return first_cmd_in_buf(ip); }
+
+int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes) {
+  return process_ascii_chunk_internal(ip, buf, num_bytes);
+}
 
 static int escape_command(interactive_t *ip, const char *user_command) {
   if (user_command[0] != '!') {

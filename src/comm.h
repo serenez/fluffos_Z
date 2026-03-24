@@ -75,5 +75,6 @@ void on_user_input(interactive_t *ip, const char *data, size_t len);
 void on_user_websocket_received(interactive_t *ip, const char *data, size_t len);
 void on_user_websocket_telnet_received(interactive_t *ip, const char *data, size_t len);
 bool mud_packet_is_complete(int packet_size, int text_end);
+int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes);
 
 #endif /* COMM_H */

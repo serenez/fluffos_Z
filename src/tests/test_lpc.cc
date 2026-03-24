@@ -600,6 +600,88 @@ TEST_F(DriverTest, TestProcessUserCommandKeepsLastLineBufferedCommandIntact) {
   event_base_free(base);
 }
 
+TEST_F(DriverTest, TestAsciiChunkProcessesEmptyLineSafely) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ob->interactive = ip;
+
+  const unsigned char chunk[] = {'\n'};
+  EXPECT_EQ(1, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+
+  auto *ret = call_lpc_method(ob, "query_last_input");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_STRING, ret->type);
+  ASSERT_NE(ret->u.string, nullptr);
+  EXPECT_STREQ("", ret->u.string);
+
+  ob->interactive = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestAsciiChunkProcessesEmptyLineSafely");
+}
+
+TEST_F(DriverTest, TestAsciiChunkProcessesCommandAfterCrLfInSameRead) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ob->interactive = ip;
+
+  const unsigned char chunk[] = {'l', 'o', 'o', 'k', '\r', '\n', 's', 'a', 'y', '\n'};
+  EXPECT_EQ(2, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+
+  auto *ret = call_lpc_method(ob, "query_input_history");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_ARRAY, ret->type);
+  ASSERT_NE(ret->u.arr, nullptr);
+  ASSERT_EQ(2, ret->u.arr->size);
+  ASSERT_EQ(T_STRING, ret->u.arr->item[0].type);
+  ASSERT_EQ(T_STRING, ret->u.arr->item[1].type);
+  EXPECT_STREQ("look", ret->u.arr->item[0].u.string);
+  EXPECT_STREQ("say", ret->u.arr->item[1].u.string);
+
+  ob->interactive = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestAsciiChunkProcessesCommandAfterCrLfInSameRead");
+}
+
 TEST_F(DriverTest, TestGatewayMaxPacketSizeRemainsIndependentFromMaxText) {
   auto original = g_gateway_max_packet_size;
   constexpr LPC_INT kRequestedPacketSize = 2 * 1024 * 1024;
