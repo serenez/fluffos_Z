@@ -39,6 +39,7 @@
 #endif
 #include <fcntl.h>
 #include <sstream>
+#include <string>
 #include <unistd.h>
 #include <zlib.h>
 
@@ -80,6 +81,15 @@ static int do_move(const char *from, const char *to, int flag);
 static int pstrcmp(const void * /*p1*/, const void * /*p2*/);
 static int parrcmp(const void * /*p1*/, const void * /*p2*/);
 static void encode_stat(svalue_t * /*vp*/, int /*flags*/, char * /*str*/, struct stat * /*st*/);
+
+static std::string append_path_component(const char *dir, const char *name) {
+  std::string path(dir);
+  if (!path.empty() && path.back() != '/') {
+    path.push_back('/');
+  }
+  path += name;
+  return path;
+}
 
 enum { MAX_LINES = 50 };
 
@@ -807,7 +817,7 @@ void mark_file_sv() {
 int do_rename(const char *fr, const char *t, int flag) {
   const char *from;
   const char *to;
-  char newfrom[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
+  std::string newfrom;
   int flen;
   extern svalue_t apply_ret_value;
 
@@ -846,15 +856,13 @@ int do_rename(const char *fr, const char *t, int flag) {
       p--;
     }
     n = p - from + 1;
-    memcpy(newfrom, from, n);
-    newfrom[n] = 0;
-    from = newfrom;
+    newfrom.assign(from, n);
+    from = newfrom.c_str();
   }
 
   if (file_size(to) == -2) {
     /* Target is a directory; build full target filename. */
     const char *cp;
-    char newto[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
 
     cp = strrchr(from, '/');
     if (cp) {
@@ -863,8 +871,8 @@ int do_rename(const char *fr, const char *t, int flag) {
       cp = from;
     }
 
-    sprintf(newto, "%s/%s", to, cp);
-    return do_move(from, newto, flag);
+    auto newto = append_path_component(to, cp);
+    return do_move(from, newto.c_str(), flag);
   }
   return do_move(from, to, flag);
 }
@@ -907,7 +915,6 @@ int copy_file(const char *from, const char *to) {
   if (file_size(to) == -2) {
     /* Target is a directory; build full target filename. */
     const char *cp;
-    char newto[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
 
     cp = strrchr(from, '/');
     if (cp) {
@@ -915,8 +922,8 @@ int copy_file(const char *from, const char *to) {
     } else {
       cp = from;
     }
-    sprintf(newto, "%s/%s", to, cp);
-    return copy_file(from, newto);
+    auto newto = append_path_component(to, cp);
+    return copy_file(from, newto.c_str());
   }
 
   std::error_code error_code;

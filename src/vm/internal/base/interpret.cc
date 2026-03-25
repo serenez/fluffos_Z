@@ -4457,14 +4457,17 @@ void get_line_number_info(const char **ret_file, int *ret_line) {
 }
 
 char *get_line_number(char *p, const program_t *progp) {
-  static char buf[256];
+  static thread_local std::string line_info;
   const char *file;
   int line;
 
   get_explicit_line_number_info(p, progp, &file, &line);
 
-  sprintf(buf, "/%s:%d", file, line);
-  return buf;
+  line_info = "/";
+  line_info += file;
+  line_info += ":";
+  line_info += std::to_string(line);
+  return const_cast<char *>(line_info.c_str());
 }
 
 char *get_line_number_if_any() {

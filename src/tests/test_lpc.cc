@@ -133,6 +133,17 @@ LPC_INT call_gateway_config_number(const char *key, LPC_INT value) {
 
 void noop_timer_callback(evutil_socket_t, short, void *) {}
 
+struct ConfigIntGuard {
+  explicit ConfigIntGuard(int key, int value) : index(key - RC_BASE_CONFIG_INT), previous(config_int[index]) {
+    config_int[index] = value;
+  }
+
+  ~ConfigIntGuard() { config_int[index] = previous; }
+
+  int index;
+  int previous;
+};
+
 }  // namespace
 
 // Test fixture class
@@ -248,6 +259,82 @@ TEST_F(DriverTest, TestSyntaxErrorAtEndOfFileReportsSourceLineContext) {
             std::string::npos);
   ASSERT_NE(compile_log.find("broken_identifier"), std::string::npos);
 }
+
+TEST_F(DriverTest, TestCallOtherTypeErrorHandlesLongFunctionName) {
+  ConfigIntGuard type_check_guard(__RC_CALL_OTHER_TYPE_CHECK__, 1);
+  ConfigIntGuard warn_guard(__RC_CALL_OTHER_WARN__, 0);
+  const std::string object_path = "/clone/call_other_long_name_helper";
+
+  object_t *obj = nullptr;
+  current_object = master_ob;
+
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    obj = find_object(object_path.c_str());
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(obj, nullptr);
+
+  auto *name_ret = call_lpc_method(obj, "query_long_function_name");
+  ASSERT_NE(name_ret, nullptr);
+  ASSERT_EQ(T_STRING, name_ret->type);
+  auto long_function_name = std::string(name_ret->u.string);
+
+  auto *ret = call_lpc_method(obj, "trigger");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_STRING, ret->type);
+
+  auto message = std::string(ret->u.string);
+  ASSERT_NE(message.find("Bad argument 1 in call to"), std::string::npos);
+  ASSERT_NE(message.find(long_function_name), std::string::npos);
+  ASSERT_NE(message.find("Expected: string Got int."), std::string::npos);
+}
+
+TEST_F(DriverTest, TestGetLineNumberHandlesLongFilename) {
+  auto long_file_name = std::string(320, 'l');
+  std::istringstream source("void test() {}\n");
+  auto stream = std::make_unique<IStreamLexStream>(source);
+  auto *prog = compile_file(std::move(stream), long_file_name.c_str());
+
+  ASSERT_NE(prog, nullptr);
+
+  auto location = std::string(get_line_number(prog->program, prog));
+  ASSERT_NE(location.find(long_file_name), std::string::npos);
+  ASSERT_NE(location.find(':'), std::string::npos);
+
+  deallocate_program(prog);
+}
+
+#ifdef PACKAGE_DWLIB
+TEST_F(DriverTest, TestReplaceObjectsHandlesLongObjectDescriptions) {
+  object_t *helper = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    helper = find_object("/clone/dwlib_replace_helper");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(helper, nullptr);
+
+  auto *ret = call_lpc_method(helper, "run_replace");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_STRING, ret->type);
+
+  auto replaced = std::string(ret->u.string);
+  ASSERT_NE(replaced.find("/clone/dwlib_replace_helper"), std::string::npos);
+  ASSERT_NE(replaced.find("(\""), std::string::npos);
+  ASSERT_GT(replaced.size(), 2200u);
+}
+#endif
 
 TEST_F(DriverTest, TestMasterErrorHandlerReceivesCompileDiagnosticFieldsForDirectSyntaxError) {
   struct object_t *obj = nullptr;

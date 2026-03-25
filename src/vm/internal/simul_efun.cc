@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 #include "vm/internal/apply.h"
 #include "vm/internal/base/machine.h"
@@ -39,6 +40,26 @@ object_t *simul_efun_ob;
 static void find_or_add_simul_efun(function_t * /*funp*/, int /*runtime_index*/);
 static void remove_simuls(void);
 
+namespace {
+
+std::string simul_efun_program_name(const char *file) {
+  char obname[512];
+
+  if (!filename_to_obname(file, obname, sizeof obname)) {
+    error("Illegal simul_efun file name '%s'\n", file);
+  }
+
+  std::string program_name(obname);
+  auto len = strlen(file);
+  if (len < 2 || file[len - 2] != '.') {
+    program_name += ".c";
+  }
+
+  return program_name;
+}
+
+}  // namespace
+
 #ifdef DEBUGMALLOC_EXTENSIONS
 void mark_simuls() {
   int i;
@@ -54,24 +75,17 @@ void mark_simuls() {
  * information we need.
  */
 void init_simul_efun(const char *file) {
-  char buf[512];
   object_t *new_ob;
 
   if (!file || !file[0]) {
     debug_message("No simul_efun\n");
     return;
   }
-  if (!filename_to_obname(file, buf, sizeof buf)) {
-    error("Illegal simul_efun file name '%s'\n", file);
-  }
+  auto program_name = simul_efun_program_name(file);
 
-  if (file[strlen(file) - 2] != '.') {
-    strcat(buf, ".c");
-  }
-
-  new_ob = load_object(buf, 1);
+  new_ob = load_object(program_name.c_str(), 1);
   if (new_ob == nullptr) {
-    debug_message("The simul_efun file %s was not loaded.\n", buf);
+    debug_message("The simul_efun file %s was not loaded.\n", program_name.c_str());
     exit(-1);
   }
   set_simul_efun(new_ob);

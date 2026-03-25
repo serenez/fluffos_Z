@@ -3,7 +3,7 @@
 #include "vm/internal/apply.h"
 
 #include <algorithm>  // for std::min
-#include <cstdio>     // for sprintf
+#include <string>
 
 #include "base/internal/tracing.h"
 #include "vm/internal/base/apply_cache.h"
@@ -18,6 +18,54 @@
 svalue_t apply_ret_value;
 
 int convert_type(int /*type*/);
+
+namespace {
+
+std::string bad_call_other_argument_message(int arg_index, const char *name, const char *ob_name,
+                                            int expected_type, int actual_type) {
+  std::string message = "Bad argument ";
+  message += std::to_string(arg_index);
+  message += " in call to ";
+  message += name;
+  message += "() in ";
+  message += ob_name;
+  message += "\nExpected: ";
+  message += type_name(expected_type);
+  message += " Got ";
+  message += type_name(actual_type);
+  message += ".\n";
+  return message;
+}
+
+std::string wrong_call_other_arity_message(const char *funcname, const char *progname) {
+  std::string message = "Wrong number of arguments to ";
+  message += funcname;
+  message += " in ";
+  message += progname;
+  message += ".\n";
+  return message;
+}
+
+void report_call_other_error(const std::string &message) {
+  if (CONFIG_INT(__RC_CALL_OTHER_WARN__)) {
+    if (current_prog) {
+      const char *file;
+      int line;
+      get_line_number_info(&file, &line);
+      int prsave = pragmas;
+      pragmas &= ~PRAGMA_ERROR_CONTEXT;
+      smart_log(file, line, message.c_str(), 1);
+      pragmas = prsave;
+    } else {
+      smart_log("driver", 0, message.c_str(), 1);
+    }
+    return;
+  }
+
+  error("%s", message.c_str());
+}
+
+}  // namespace
 
 int convert_type(int type) {
   switch (type & (~DECL_MODS)) {
@@ -70,27 +118,11 @@ void check_co_args2(unsigned short *types, int num_arg, const char *name, const 
     }
 
     if ((sp - argc)->type != exptype) {
-      char buf[1024];
       if ((sp - argc)->type == T_NUMBER && !(sp - argc)->u.number) {
         continue;
       }
-      sprintf(buf, "Bad argument %d in call to %s() in %s\nExpected: %s Got %s.\n", i, name,
-              ob_name, type_name(exptype), type_name((sp - argc)->type));
-      if (CONFIG_INT(__RC_CALL_OTHER_WARN__)) {
-        if (current_prog) {
-          const char *file;
-          int line;
-          get_line_number_info(&file, &line);
-          int prsave = pragmas;
-          pragmas &= ~PRAGMA_ERROR_CONTEXT;
-          smart_log(file, line, buf, 1);
-          pragmas = prsave;
-        } else {
-          smart_log("driver", 0, buf, 1);
-        }
-      } else {
-        error(buf);
-      }
+      report_call_other_error(
+          bad_call_other_argument_message(i, name, ob_name, exptype, (sp - argc)->type));
     }
   } while (i < num_arg);
 }
@@ -99,25 +131,9 @@ void check_co_args2(unsigned short *types, int num_arg, const char *name, const 
 void check_co_args(int num_arg, const program_t *prog, function_t *fun, int findex) {
   if (CONFIG_INT(__RC_CALL_OTHER_TYPE_CHECK__)) {
     if (num_arg != fun->num_arg) {
-      char buf[1024];
       // if(!current_prog) what do i need this for again?
       // current_prog = master_ob->prog;
-      sprintf(buf, "Wrong number of arguments to %s in %s.\n", fun->funcname, prog->filename);
-      if (CONFIG_INT(__RC_CALL_OTHER_WARN__)) {
-        if (current_prog) {
-          const char *file;
-          int line;
-          int prsave = pragmas;
-          pragmas &= ~PRAGMA_ERROR_CONTEXT;
-          get_line_number_info(&file, &line);
-          smart_log(file, line, buf, 1);
-          pragmas = prsave;
-        } else {
-          smart_log("driver", 0, buf, 1);
-        }
-      } else {
-        error(buf);
-      }
+      report_call_other_error(wrong_call_other_arity_message(fun->funcname, prog->filename));
     }
     int num_arg_check = std::min((unsigned char)num_arg, fun->num_arg);
     if (num_arg_check && prog->type_start && prog->type_start[findex] != INDEX_START_NONE)

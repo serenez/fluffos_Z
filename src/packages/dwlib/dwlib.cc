@@ -1,5 +1,7 @@
 #include "base/package_api.h"
 
+#include <string>
+
 // from add_action.h
 extern object_t *find_living_object(const char *, int);
 
@@ -736,21 +738,20 @@ svalue_t *replace_objects(svalue_t *thing) {
   int i;
   switch (thing->type) {
     case T_OBJECT: {
-      char buf[2000];
-      strcpy(buf, thing->u.ob->obname);
+      std::string description(thing->u.ob->obname);
       svalue_t *tmp = nullptr;
       if (!(thing->u.ob->flags & O_DESTRUCTED)) {
         push_object(thing->u.ob);
         tmp = safe_apply_master_ob(APPLY_OBJECT_NAME, 1);
       } else {
-        strcat(buf, " (destructed)");
+        description += " (destructed)";
       }
       if (tmp && tmp->type == T_STRING) {
-        strcat(buf, " (\"");
-        strcat(buf, tmp->u.string);
-        strcat(buf, "\")");
+        description += " (\"";
+        description += tmp->u.string;
+        description += "\")";
       }
-      copy_and_push_string(buf);
+      copy_and_push_string(description.c_str());
       assign_svalue(&replace_tmp, sp);
       pop_stack();
       return &replace_tmp;
