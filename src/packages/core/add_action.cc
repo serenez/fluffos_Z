@@ -436,13 +436,10 @@ static int user_parser(char *buff) {
       /* is it still around?  Otherwise, ignore this ...
          it moved somewhere or dested itself */
       if (s == command_giver->sent) {
-        char buf[256];
         if (s->flags & V_FUNCTION) {
-          sprintf(buf, "Verb '%s' bound to uncallable function pointer.\n", s->verb);
-          error(buf);
+          error("Verb '%s' bound to uncallable function pointer.\n", s->verb);
         } else {
-          sprintf(buf, "Function for verb '%s' not found.\n", s->verb);
-          error(buf);
+          error("Function for verb '%s' not found.\n", s->verb);
         }
       }
     }

@@ -32,5 +32,7 @@ void do_tests() {
   parse_add_rule("look", "WRD OBJ");
   write(parse_dump() + "\n");
   ASSERT_EQ(1, parse_sentence("look in bag", 2, all_inventory()));
+  ASSERT_EQ(0, catch(parse_sentence("look " + repeat_string("thing ", 250) + "bag", 2,
+                                    all_inventory())));
 #endif
 }

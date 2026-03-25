@@ -22,6 +22,8 @@
 
 #include "base/package_api.h"
 
+#include <string>
+
 #include "packages/parser/parser.h"
 #include "packages/core/outbuf.h"
 
@@ -3072,21 +3074,16 @@ static void reset_error() {
 }
 
 static void parse_recurse(char **iwords, char **ostart, char **oend) {
-  char buf[1024];
-  char *p;
+  std::string combined;
   const char *q;
   char **iwp = iwords;
   int first = 1;
-  int l, idx;
+  int idx;
 
   if (*iwords[0]) {
-    *buf = 0;
-    p = buf;
     do {
-      l = iwp[1] - iwp[0] - 1;
-      strcpy(p, *iwp++);
-      p += l;
-      if ((q = findstring(buf))) {
+      combined += *iwp++;
+      if ((q = findstring(combined.c_str()))) {
         words[num_words].type = 0;
         words[num_words].start = ostart[0];
         words[num_words].end = oend[iwp - iwords - 1];
@@ -3095,20 +3092,20 @@ static void parse_recurse(char **iwords, char **ostart, char **oend) {
         parse_recurse(iwp, ostart + idx, oend + idx);
         num_words--;
       } else if (first) {
-        l = p - buf;
+        auto const len = static_cast<int>(combined.size());
         words[num_words].type = WORD_ALLOCATED;
-        words[num_words].string = new_string(l, "parse_recurse");
+        words[num_words].string = new_string(len, "parse_recurse");
         words[num_words].start = ostart[0];
         words[num_words].end = oend[iwp - iwords - 1];
-        memcpy(words[num_words].string, buf, l);
-        words[num_words++].string[l] = 0;
+        memcpy(words[num_words].string, combined.data(), len);
+        words[num_words++].string[len] = 0;
         idx = iwp - iwords;
         parse_recurse(iwp, ostart + idx, oend + idx);
         num_words--;
         FREE_MSTR(words[num_words].string);
       }
       first = 0;
-      *p++ = ' ';
+      combined.push_back(' ');
     } while (*iwp[0]);
   } else {
 #if defined(DEBUG) || defined(PARSE_DEBUG)

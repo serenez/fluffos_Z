@@ -1062,6 +1062,32 @@ TEST_F(DriverTest, TestMudlibStatsAcceptLongAuthorAndDomainNames) {
   reset_test_stat_overrides();
 }
 
+TEST_F(DriverTest, TestMudlibStatsRestoreAcceptsLongNamesFromFile) {
+  std::string long_author(768, 'a');
+  std::string long_domain(1024, 'd');
+  long_author += "_restore_author";
+  long_domain += "_restore_domain";
+
+  reset_test_stat_overrides();
+  set_test_author_override(long_author.c_str());
+  set_test_domain_override(long_domain.c_str());
+
+  ASSERT_NE(set_master_author(long_author.c_str()), nullptr);
+  ASSERT_NE(set_backbone_domain(long_domain.c_str()), nullptr);
+
+  save_stat_files();
+  restore_stat_files();
+
+  auto *author_stats = get_author_stats(long_author.c_str());
+  auto *domain_stats = get_domain_stats(long_domain.c_str());
+  ASSERT_NE(author_stats, nullptr);
+  ASSERT_NE(domain_stats, nullptr);
+  free_mapping(author_stats);
+  free_mapping(domain_stats);
+
+  reset_test_stat_overrides();
+}
+
 TEST_F(DriverTest, TestConfigKeepsConfiguredMaximumLocalVariables) {
   EXPECT_EQ(30, CONFIG_INT(__MAX_LOCAL_VARIABLES__));
 }

@@ -11,6 +11,9 @@ void do_tests() {
     ASSERT_EQ(read_file("/sf.o") , "#" + __FILE__ + "\ny " + MAX_INT + "\n");
     save_object("/sf", 1);
     ASSERT_EQ(read_file("/sf.o"),  "#" + __FILE__ + "\nx 0\ny " + MAX_INT + "\n");
+    ASSERT(save_object("a"));
+    ASSERT(read_file("a.o"));
+    rm("a.o");
 
     // Fluffos new behavior.
     ASSERT_EQ(save_object(0), "#" + __FILE__ + "\ny " + MAX_INT + "\n");

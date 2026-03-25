@@ -5,6 +5,7 @@
 #include <cstdio>   // for std::remove
 #include <math.h>   // for pow
 #include <memory>   // for std::unique_ptr
+#include <string>
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
@@ -1489,11 +1490,22 @@ static int save_object_recurse_str(program_t *prog, svalue_t **svp, int type, in
 namespace {
 int sel = -1;
 const int SAVE_EXTENSION_GZ_LENGTH = strlen(SAVE_GZ_EXTENSION);
+
+std::string normalized_save_object_name(const char *obname) {
+  std::string save_name = obname ? obname : "";
+  auto hash_pos = save_name.rfind('#');
+  if (hash_pos != std::string::npos) {
+    save_name.resize(hash_pos);
+  }
+  if (save_name.size() < 2 || save_name.compare(save_name.size() - 2, 2, ".c") != 0) {
+    save_name += ".c";
+  }
+  return save_name;
+}
 }  // namespace
 
 int save_object(object_t *ob, const char *file, int save_zeros) {
-  char *name, *p;
-  static char save_name[256], tmp_name[256];
+  char *name;
   int len;
   FILE *f;
   int success;
@@ -1501,6 +1513,8 @@ int save_object(object_t *ob, const char *file, int save_zeros) {
 
   gzFile gzf;
   int save_compressed;
+  std::string save_name;
+  std::string tmp_name;
 
   if (save_zeros & 2) {
     save_compressed = 1;
@@ -1514,14 +1528,14 @@ int save_object(object_t *ob, const char *file, int save_zeros) {
   }
 
   len = strlen(file);
-  if (file[len - 2] == '.' && file[len - 1] == 'c') {
+  if (len >= 2 && file[len - 2] == '.' && file[len - 1] == 'c') {
     len -= 2;
   }
 
   if (sel == -1) {
     sel = strlen(SAVE_EXTENSION);
   }
-  if (strcmp(file + len - sel, SAVE_EXTENSION) == 0) {
+  if (len >= sel && strcmp(file + len - sel, SAVE_EXTENSION) == 0) {
     len -= sel;
   }
 
@@ -1543,34 +1557,28 @@ int save_object(object_t *ob, const char *file, int save_zeros) {
     error("Denied write permission in save_object().\n");
   }
 
-  strcpy(save_name, ob->obname);
-  if ((p = strrchr(save_name, '#')) != nullptr) {
-    *p = '\0';
-  }
-  p = save_name + strlen(save_name) - 1;
-  if (*p != 'c' && *(p - 1) != '.') {
-    strcat(p, ".c");
-  }
+  save_name = normalized_save_object_name(ob->obname);
 
   /*
    * Write the save-files to different directories, just in case
    * they are on different file systems.
    */
-  sprintf(tmp_name, "%.250s.tmp", file);
+  tmp_name = file;
+  tmp_name += ".tmp";
 
   gzf = nullptr;
   f = nullptr;
   if (save_compressed) {
-    gzf = gzopen(tmp_name, "wb");
+    gzf = gzopen(tmp_name.c_str(), "wb");
     if (!gzf) {
-      error("Could not open /%s for a save.\n", tmp_name);
+      error("Could not open /%s for a save.\n", tmp_name.c_str());
     }
     if (!gzprintf(gzf, "#/%s\n", ob->prog->filename)) {
-      error("Could not open /%s for a save.\n", tmp_name);
+      error("Could not open /%s for a save.\n", tmp_name.c_str());
     }
   } else {
-    if (!(f = fopen(tmp_name, "wb")) || fprintf(f, "#/%s\n", save_name) < 0) {
-      error("Could not open /%s for a save.\n", tmp_name);
+    if (!(f = fopen(tmp_name.c_str(), "wb")) || fprintf(f, "#/%s\n", save_name.c_str()) < 0) {
+      error("Could not open /%s for a save.\n", tmp_name.c_str());
     }
   }
   v = ob->variables;
@@ -1589,23 +1597,23 @@ int save_object(object_t *ob, const char *file, int save_zeros) {
 
   if (!success) {
     debug_message("Failed to completely save file. Disk could be full.\n");
-    std::remove(tmp_name);
+    std::remove(tmp_name.c_str());
   } else {
     std::error_code error_code;
     auto base = fs::current_path(error_code);
     fs::rename(base / fs::path(tmp_name), base / fs::path(file), error_code);
     if (error_code) {
-      debug_message("Failed to rename /%s to /%s: Error: %d (%s)\n", tmp_name, file,
+      debug_message("Failed to rename /%s to /%s: Error: %d (%s)\n", tmp_name.c_str(), file,
                     error_code.value(), error_code.message().c_str());
-      std::remove(tmp_name);
+      std::remove(tmp_name.c_str());
       debug_message("Failed to save object!\n");
     } else if (save_compressed) {
-      char buf[1024];
-      // When compressed, unlink the uncompressed name too.
-      strcpy(buf, file);
-      len = strlen(buf) - SAVE_EXTENSION_GZ_LENGTH;
-      strcpy(buf + len, SAVE_EXTENSION);
-      std::remove(buf);
+      std::string uncompressed_name = file;
+      if (uncompressed_name.size() >= SAVE_EXTENSION_GZ_LENGTH) {
+        uncompressed_name.resize(uncompressed_name.size() - SAVE_EXTENSION_GZ_LENGTH);
+        uncompressed_name += SAVE_EXTENSION;
+        std::remove(uncompressed_name.c_str());
+      }
     }
   }
 
@@ -1613,25 +1621,20 @@ int save_object(object_t *ob, const char *file, int save_zeros) {
 }
 
 int save_object_str(object_t *ob, int save_zeros, char *saved, int size) {
-  char *p;
   int success;
   svalue_t *v;
-  char *now = saved;
+  char *now;
   int left;
+  auto header = std::string("#/") + normalized_save_object_name(ob->obname);
   if (ob->flags & O_DESTRUCTED) {
     return 0;
   }
-  strcpy(now, "#/");
-  now += 2;
-  strcpy(now, ob->obname);
-  if ((p = strrchr(now, '#')) != nullptr) {
-    *p = '\0';
+  if (static_cast<int>(header.size()) >= size) {
+    debug_message("Failed to completely save file. string size too small?.\n");
+    return 0;
   }
-  p = now + strlen(now) - 1;
-  if (*p != 'c' && *(p - 1) != '.') {
-    strcat(p, ".c");
-  }
-  now = now + strlen(now);
+  memcpy(saved, header.data(), header.size());
+  now = saved + header.size();
   *now++ = '\n';
   left = size - (now - saved);
   *now = 0;

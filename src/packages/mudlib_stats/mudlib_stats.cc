@@ -9,6 +9,9 @@
 
 #include "base/package_api.h"
 
+#include <fstream>
+#include <string>
+
 #include <sys/param.h>
 
 #include "packages/mudlib_stats/mudlib_stats.h"
@@ -493,37 +496,40 @@ static void save_stat_list(const char *file, mudlib_stats_t *list) {
 }
 
 static void restore_stat_list(const char *file, mudlib_stats_t **list) {
-  FILE *f;
-  char fname_buf[MAXPATHLEN];
-  char *fname = fname_buf;
   mudlib_stats_t *entry;
+  std::string path;
 
   if (file) {
     if (strchr(file, '/')) {
       if (file[0] == '/') {
         file++;
       }
-      f = fopen(file, "r");
+      path = file;
     } else {
-      sprintf(fname, "%s/%s", CONFIG_STR(__LOG_DIR__), file);
-      if (fname[0] == '/') {
-        fname++;
+      path = CONFIG_STR(__LOG_DIR__);
+      path += "/";
+      path += file;
+      if (!path.empty() && path[0] == '/') {
+        path.erase(0, 1);
       }
-      f = fopen(fname, "r");
     }
   } else {
     debug_message("*Warning: call to save_stat_list with null filename\n");
     return;
   }
-  if (!f) {
+  std::ifstream input(path);
+  if (!input.is_open()) {
     debug_message("*Warning: unable to open stat file %s for reading.\n", file);
     return;
   }
-  while (fscanf(f, "%s", fname) != EOF) {
-    entry = add_stat_entry(fname, list);
-    fscanf(f, "%d %d\n", &entry->moves, &entry->heart_beats);
+  std::string name;
+  int moves = 0;
+  int heart_beats = 0;
+  while (input >> name >> moves >> heart_beats) {
+    entry = add_stat_entry(name.c_str(), list);
+    entry->moves = moves;
+    entry->heart_beats = heart_beats;
   }
-  fclose(f);
 }
 
 void save_stat_files() {
