@@ -354,15 +354,20 @@ int filename_to_obname(const char *src, char *dest, int size) {
   char last_c = 0;
   char *p = dest;
   char *end = dest + size - 1;
+  bool truncated = false;
 
   while (*src == '/') {
     src++;
   }
 
-  while (*src && p < end) {
+  while (*src) {
     if (last_c == '/' && *src == '/') {
       src++;
     } else {
+      if (p >= end) {
+        truncated = true;
+        break;
+      }
       last_c = (*p++ = *src++);
     }
   }
@@ -385,7 +390,7 @@ int filename_to_obname(const char *src, char *dest, int size) {
   }
 
   *p = 0;
-  return 1;
+  return truncated ? 0 : 1;
 }
 
 /*
@@ -505,7 +510,13 @@ object_t *load_object(const char *lname, int callcreate) {
     char inhbuf[MAX_OBJECT_NAME_SIZE];
 
     if (!filename_to_obname(inherit_file, inhbuf, sizeof inhbuf)) {
-      strcpy(inhbuf, inherit_file);
+      std::string inherited_name(inherit_file);
+      FREE(inherit_file);
+      inherit_file = nullptr;
+      if (prog) {
+        free_prog(&prog);
+      }
+      error("Inherited file name is too long: '/%s'\n", inherited_name.c_str());
     }
     FREE(inherit_file);
     inherit_file = nullptr;

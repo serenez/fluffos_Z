@@ -64,35 +64,42 @@
 | AUD-20260325-008 | FIXED | 中 | `core/file` | `src/packages/core/file.cc:857-867,910-918` | `do_rename()` / `copy_file()` 在目标是目录时，用 `sprintf(newto, "%s/%s", to, cp)` 拼接到固定 `char newto[MAX_FNAME_SIZE + MAX_PATH_LEN + 2]`。但 `check_valid_path()` / `legal_path()` 只做权限和路径合法性检查，没有长度上限。 | LPC 侧传入超长目标目录名，或超长文件名移动到目录下。 | 栈缓冲区溢出，触发点在文件移动/复制路径。 | 已改成动态路径拼接，同时顺手去掉了同一路径下 `newfrom` 的固定缓冲复制。 |
 | AUD-20260325-009 | FIXED | 中 | `vm/simul_efun` | `src/vm/internal/simul_efun.cc:64-70` | `init_simul_efun()` 在 `file` 非空后直接访问 `file[strlen(file) - 2]`，长度为 1 的配置值会越界读；同一分支里对 `buf[512]` 追加 `".c"` 也没有确认剩余空间。 | `simul_efun_file` 配置成单字符名，或极长文件名。 | 启动阶段越界读；长文件名场景还可能继续写穿栈缓冲。 | 已改成动态构造 simul_efun 目标文件名，并补上长度判断。 |
 | AUD-20260325-010 | FIXED | 中 | `vm/interpret` | `src/vm/internal/base/interpret.cc:4459-4466` | `get_line_number()` 用固定 `static char buf[256]` 写入 `"/%s:%d"`。而 `progp->filename` 来自 `load_object()` 的对象路径，长度可接近 400，明显超过缓冲。 | 长路径对象在报错、trace、`call_stack()` 等路径下取行号信息。 | 静态缓冲区溢出，可能污染后续错误输出或直接崩溃。 | 已改成线程局部动态字符串返回，避免固定长度上限。 |
+| AUD-20260326-011 | FIXED | 中 | `compress` | `src/packages/compress/compress.cc:48` | `f_compress_file()` 在判断输入是否已经带 `.gz` 时，直接计算 `input_file + len - strlen(GZ_EXTENSION)`，没有先确认 `len >= 3`。 | `compress_file("")`、`compress_file("a")`、`compress_file("ab")` 这类短文件名。 | 越界读，错误路径判断不可靠；在特定构建和布局下可直接触发异常。 | 已抽成安全的后缀判断函数，先做最小长度检查，再比较 `.gz`。 |
+| AUD-20260326-012 | FIXED | 中 | `compress` | `src/packages/compress/compress.cc:143` | `f_uncompress_file()` 在判断输入是否以 `.gz` 结尾时，同样直接使用 `input_file + len - strlen(GZ_EXTENSION)`，没有检查最小长度。 | `uncompress_file("")`、`uncompress_file("a")`、`uncompress_file("ab")` 等短文件名。 | 越界读，输入校验逻辑可被短字符串直接打穿。 | 已改成复用安全后缀判断逻辑，并补短文件名回归。 |
+| AUD-20260326-013 | FIXED | 高 | `compress` | `src/packages/compress/compress.cc:68,166` | `f_compress_file()` / `f_uncompress_file()` 在 `check_valid_path()` 返回后，又把结果 `strcpy` 到固定 `char outname[1024]`。路径校验只判断权限和合法性，没有保证长度不超过 1023。 | 传入超长输出路径，或合法路径在归一化后仍超过 1023 字节。 | 栈缓冲区溢出，触发点在压缩/解压输出文件路径。 | 已改成 `std::string` 保存归一化后的输出路径，并补长输出路径定向回归。 |
+| AUD-20260326-014 | FIXED | 高 | `vm/simulate` | `src/vm/internal/simulate.cc:353,508` | `filename_to_obname()` 之前会在缓冲打满后静默截断，`load_object()` 处理 `inherit_file` 时又把失败分支回退到裸复制，超长继承路径既可能被截断，也会把错误处理带回危险路径。 | 源码里写入超长 `inherit "<very long path>"`。 | 编译/加载对象时可能走错对象名，错误分支还会重新引入固定缓冲复制风险。 | 已让 `filename_to_obname()` 在截断时明确返回失败，`load_object()` 对超长 `inherit_file` 直接报错退出，并补回归。 |
 
 ## 建议修复顺序
 
 1. 继续扫 `src/packages/core/` 的剩余固定缓冲热点。
-2. 继续扫 `src/vm/internal/` 的启动和错误输出链路。
-3. 把 `src/packages/contrib/`、`src/packages/compress/`、`src/tools/` 的格式化字符串问题继续捞干净。
+2. 继续扫 `src/packages/contrib/`、`src/tools/` 的错误处理和格式化字符串路径。
+3. 继续扫 `src/vm/internal/` 里其余启动和错误输出链路。
 
 ## 下一轮审计建议
 
 - 继续扫 `src/packages/core/` 里 `ed.cc`、`regexp.cc`、`trace.cc` 等剩余固定缓冲热点。
 - 继续扫 `src/vm/internal/` 里启动配置、错误输出、trace 相关路径。
-- 对 `src/packages/contrib/`、`src/packages/compress/` 和 `src/tools/` 做一次格式化字符串专项。
-- 下一轮优先把还没覆盖到的 `file.cc` / `simul_efun.cc` 边界场景补成定向回归。
+- 对 `src/packages/contrib/` 和 `src/tools/` 做一次格式化字符串与失败路径专项。
+- 把 `src/packages/core/ed.cc`、`src/packages/core/trace.cc` 这类老模块里仍然可触达的固定缓冲热点继续收口。
 
 ## 本轮验证
 
 - `build_codex_review_fix` 重新编译 `lpc_tests` 通过。
-- 新增定向回归:
-  - `DriverTest.TestCallOtherTypeErrorHandlesLongFunctionName`
-  - `DriverTest.TestGetLineNumberHandlesLongFilename`
-- 单测级验证通过:
-  - `DriverTest.TestAsciiChunkStopsAfterProcessInputDestructsObject` 单独运行 10 次均通过
-  - `ctest -R DriverTest.TestAsciiChunkStopsAfterProcessInputDestructsObject` 单独运行通过
-- 当前仍有 1 个待确认波动:
-  - `ctest --output-on-failure -j 1` 的整套批量运行里，`DriverTest.TestAsciiChunkStopsAfterProcessInputDestructsObject` 在第 29 项位置稳定报 `0xc0000374`
-  - 同一测试单独运行稳定通过，说明这是一个现有的批量执行场景问题，还需要额外排查
+- 串联复现通过:
+  - `DriverTest.TestAsciiChunkContinuesAfterExecTransfersInteractive`
+  - `DriverTest.TestAsciiChunkStopsAfterProcessInputDestructsObject`
+- 新增定向回归通过:
+  - `DriverTest.TestCompressFileRejectsShortInputNameSafely`
+  - `DriverTest.TestUncompressFileRejectsShortInputNameSafely`
+  - `DriverTest.TestCompressAndUncompressHandleLongOutputPathsSafely`
+  - `DriverTest.TestLoadObjectRejectsOverlongInheritedFileSafely`
+- 整套回归通过:
+  - `ctest --output-on-failure -j 1` 结果 `46/46`
 
 ## 本轮追加审计记录
 
 - 本轮已完成 `apply.cc`、`dwlib.cc`、`file.cc`、`simul_efun.cc`、`interpret.cc` 的修复。
 - `call_other` 长函数名和 `get_line_number` 长文件名已经补上回归。
 - `dwlib` 的定向辅助对象已补入 testsuite，但当前测试配置未启用 `PACKAGE_DWLIB`，对应回归未参与执行。
+- 已修复 `TestAsciiChunkStopsAfterProcessInputDestructsObject` 的批量执行波动，问题根因是测试在对象自毁后继续访问已析构对象。
+- `compress.cc` 和 `simulate.cc` 这轮新增的 4 条问题已全部修复并补回归。

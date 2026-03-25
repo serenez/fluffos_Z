@@ -15,11 +15,48 @@ title: driver 提交记录
 
 ## 提交记录
 
+### 2026-03-26 00:37
+
+**提交号**
+
+`待提交`
+
+**标题**
+
+`fix(driver): 修复输入回归清理与压缩加载边界`
+
+**提交信息**
+
+```text
+修复内容：
+- 调整 ASCII 输入链路回归测试的清理方式，避免对象自毁后继续对旧对象发起 safe_apply，修复批量执行场景下的测试崩溃
+- 在 testsuite/single/master.c 中增加测试输入快照接口，并让 /clone/input_capture_user 在自毁前写回最后一次输入和输入历史，便于测试在对象析构后继续验证行为
+- 修复 compress_file()/uncompress_file() 对短文件名直接回退指针比较 .gz 后缀的问题，补齐最小长度检查
+- 修复 compress_file()/uncompress_file() 在规范化输出路径后重新复制到固定 outname[1024] 的问题，改为使用动态字符串承接路径
+- 修复 filename_to_obname() 在缓冲打满时静默截断的问题，超过目标缓冲时明确返回失败
+- 修复 load_object() 在处理超长 inherit_file 时回退到固定缓冲复制的危险路径，改为直接报错终止加载
+
+测试与验证：
+- 使用 MSYS2 MINGW64 重新编译 build_codex_review_fix 的 lpc_tests，编译通过
+- 新增定向回归：
+  - DriverTest.TestCompressFileRejectsShortInputNameSafely
+  - DriverTest.TestUncompressFileRejectsShortInputNameSafely
+  - DriverTest.TestCompressAndUncompressHandleLongOutputPathsSafely
+  - DriverTest.TestLoadObjectRejectsOverlongInheritedFileSafely
+- 复跑输入链路相关回归：
+  - DriverTest.TestAsciiChunkContinuesAfterExecTransfersInteractive
+  - DriverTest.TestAsciiChunkStopsAfterProcessInputDestructsObject
+- 执行 ctest --output-on-failure -j 1，结果 46/46 全通过
+
+文档更新：
+- 补充 docs/audit/full_code_audit_2026_03_25.md，回写本轮修复结论和验证结果
+```
+
 ### 2026-03-26 00:04
 
 **提交号**
 
-`本次提交`
+`3ab70ab2`
 
 **标题**
 

@@ -11,6 +11,8 @@ nosave mapping last_error_map = 0;
 nosave string test_login_ob = 0;
 nosave string test_domain_override = 0;
 nosave string test_author_override = 0;
+nosave string test_input_snapshot = 0;
+nosave string *test_input_history_snapshot = ({});
 
 public string clear_last_error() {
   last_error = "";
@@ -43,6 +45,24 @@ public void set_test_author_override(string value) {
 public void reset_test_stat_overrides() {
   test_domain_override = 0;
   test_author_override = 0;
+}
+
+public void clear_test_input_snapshot() {
+  test_input_snapshot = 0;
+  test_input_history_snapshot = ({});
+}
+
+public void set_test_input_snapshot(string value, string *history) {
+  test_input_snapshot = value;
+  test_input_history_snapshot = history;
+}
+
+public string query_test_input_snapshot() {
+  return test_input_snapshot;
+}
+
+public string *query_test_input_history_snapshot() {
+  return test_input_history_snapshot;
 }
 
 // find stack right before __assert

@@ -7,26 +7,35 @@
 
 #include "packages/core/file.h"
 
+#include <string>
 #include <zlib.h>
 
 #define GZ_EXTENSION ".gz"
 
 enum { COMPRESS_BUF_SIZE = 8096 };
 
+namespace {
+
+bool has_gz_extension(const char *path) {
+  const auto path_len = strlen(path);
+  const auto ext_len = strlen(GZ_EXTENSION);
+  return path_len >= ext_len && strcmp(path + path_len - ext_len, GZ_EXTENSION) == 0;
+}
+
+}  // namespace
+
 #ifdef F_COMPRESS_FILE
 void f_compress_file() {
   int readb;
-  int len;
   int const num_arg = st_num_arg;
   const char *input_file;
   const char *output_file;
   const char *real_input_file;
   const char *real_output_file;
-  char *tmpout;
   gzFile out_file;
   FILE *in_file;
   char buf[4096];
-  char outname[1024];
+  std::string output_path;
 
   // Not a string?  Error!
   if ((sp - num_arg + 1)->type != T_STRING) {
@@ -44,33 +53,25 @@ void f_compress_file() {
     }
     output_file = (sp - num_arg + 2)->u.string;
   } else {
-    len = strlen(input_file);
-    if (!strcmp(input_file + len - strlen(GZ_EXTENSION), GZ_EXTENSION)) {
+    if (has_gz_extension(input_file)) {
       // Already compressed...
       pop_n_elems(num_arg);
       push_number(0);
       return;
     }
-    tmpout = new_string(strlen(input_file) + strlen(GZ_EXTENSION), "compress_file");
-    strcpy(tmpout, input_file);
-    strcat(tmpout, GZ_EXTENSION);
-    output_file = tmpout;
+    output_path = input_file;
+    output_path += GZ_EXTENSION;
+    output_file = output_path.c_str();
   }
 
   real_output_file = check_valid_path(output_file, current_object, "compress_file", 1);
   if (!real_output_file) {
-    FREE_MSTR(output_file);
     pop_n_elems(num_arg);
     push_number(0);
     return;
   }
-  // Copy it into our little buffer.
-  strcpy(outname, real_output_file);
-  // Free the old file.
-  if (num_arg != 2) {
-    FREE_MSTR(output_file);
-  }
-  output_file = outname;
+  output_path = real_output_file;
+  output_file = output_path.c_str();
 
   real_input_file = check_valid_path(input_file, current_object, "compress_file", 0);
   if (!real_input_file) {
@@ -111,7 +112,6 @@ void f_compress_file() {
 #ifdef F_UNCOMPRESS_FILE
 void f_uncompress_file() {
   int readb;
-  int len;
   int const num_arg = st_num_arg;
   const char *input_file;
   const char *output_file;
@@ -120,7 +120,7 @@ void f_uncompress_file() {
   FILE *out_file;
   gzFile in_file;
   char buf[4196];
-  char outname[1024];
+  std::string output_path;
 
   // Not a string?  Error!
   if ((sp - num_arg + 1)->type != T_STRING) {
@@ -138,36 +138,25 @@ void f_uncompress_file() {
     }
     output_file = (sp - num_arg + 2)->u.string;
   } else {
-    char *tmp;
-    len = strlen(input_file);
-    if (strcmp(input_file + len - strlen(GZ_EXTENSION), GZ_EXTENSION) != 0) {
+    const auto len = strlen(input_file);
+    if (!has_gz_extension(input_file)) {
       // Not compressed...
       pop_n_elems(num_arg);
       push_number(0);
       return;
     }
-    tmp = new_string(len, "compress_file");
-    strcpy(tmp, input_file);
-    tmp[len - strlen(GZ_EXTENSION)] = 0;
-    output_file = tmp;
+    output_path.assign(input_file, len - strlen(GZ_EXTENSION));
+    output_file = output_path.c_str();
   }
 
   real_output_file = check_valid_path(output_file, current_object, "compress_file", 1);
   if (!real_output_file) {
-    if (num_arg != 2) {
-      FREE_MSTR(output_file);
-    }
-
     pop_n_elems(num_arg);
     push_number(0);
     return;
   }
-  // Copy it into our little buffer.
-  strcpy(outname, real_output_file);
-  if (num_arg != 2) {
-    FREE_MSTR(output_file);
-  }
-  output_file = outname;
+  output_path = real_output_file;
+  output_file = output_path.c_str();
 
   real_input_file = check_valid_path(input_file, current_object, "compress_file", 0);
   if (!real_input_file) {

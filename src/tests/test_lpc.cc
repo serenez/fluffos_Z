@@ -2,6 +2,7 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
+#include <cstdio>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -37,6 +38,12 @@ bool schedule_user_logon_for_test(event_base *base, interactive_t *user);
 void cleanup_pending_user_for_test(interactive_t *user, bool close_socket);
 void reset_user_logon_callback_runs_for_test();
 int user_logon_callback_runs_for_test();
+#ifdef F_COMPRESS_FILE
+void f_compress_file();
+#endif
+#ifdef F_UNCOMPRESS_FILE
+void f_uncompress_file();
+#endif
 
 namespace {
 
@@ -66,6 +73,10 @@ svalue_t *call_lpc_method(object_t *ob, const char *method, int num_args = 0) {
   auto *ret = safe_apply(method, ob, num_args, ORIGIN_DRIVER);
   restore_command_giver();
   return ret;
+}
+
+void push_test_string(const std::string &value) {
+  push_malloced_string(string_copy(value.c_str(), "DriverTest::push_test_string"));
 }
 
 void clear_master_error_state() {
@@ -109,6 +120,72 @@ void set_test_author_override(const char *value) {
 }
 
 void reset_test_stat_overrides() { call_lpc_method(master_ob, "reset_test_stat_overrides"); }
+
+void clear_test_input_snapshot() { call_lpc_method(master_ob, "clear_test_input_snapshot"); }
+
+std::string query_test_input_snapshot() {
+  auto *ret = call_lpc_method(master_ob, "query_test_input_snapshot");
+  if (!ret || ret->type != T_STRING || ret->u.string == nullptr) {
+    return {};
+  }
+  return ret->u.string;
+}
+
+std::vector<std::string> query_test_input_history_snapshot() {
+  std::vector<std::string> history;
+  auto *ret = call_lpc_method(master_ob, "query_test_input_history_snapshot");
+  if (!ret || ret->type != T_ARRAY || ret->u.arr == nullptr) {
+    return history;
+  }
+
+  history.reserve(ret->u.arr->size);
+  for (int i = 0; i < ret->u.arr->size; i++) {
+    if (ret->u.arr->item[i].type == T_STRING && ret->u.arr->item[i].u.string != nullptr) {
+      history.emplace_back(ret->u.arr->item[i].u.string);
+    }
+  }
+  return history;
+}
+
+#ifdef F_COMPRESS_FILE
+LPC_INT call_compress_file_efun(const std::string &input_file, const std::string *output_file = nullptr) {
+  push_test_string(input_file);
+  st_num_arg = 1;
+  if (output_file != nullptr) {
+    push_test_string(*output_file);
+    st_num_arg = 2;
+  }
+  f_compress_file();
+  EXPECT_EQ(T_NUMBER, sp->type);
+  auto result = sp->u.number;
+  pop_stack();
+  return result;
+}
+#endif
+
+#ifdef F_UNCOMPRESS_FILE
+LPC_INT call_uncompress_file_efun(const std::string &input_file,
+                                  const std::string *output_file = nullptr) {
+  push_test_string(input_file);
+  st_num_arg = 1;
+  if (output_file != nullptr) {
+    push_test_string(*output_file);
+    st_num_arg = 2;
+  }
+  f_uncompress_file();
+  EXPECT_EQ(T_NUMBER, sp->type);
+  auto result = sp->u.number;
+  pop_stack();
+  return result;
+}
+#endif
+
+void write_test_file(const std::string &path, const std::string &content) {
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  ASSERT_TRUE(file.is_open());
+  file << content;
+  file.close();
+}
 
 LPC_INT call_gateway_config_number(const char *key) {
   push_constant_string(key);
@@ -307,6 +384,77 @@ TEST_F(DriverTest, TestGetLineNumberHandlesLongFilename) {
   ASSERT_NE(location.find(':'), std::string::npos);
 
   deallocate_program(prog);
+}
+
+#ifdef F_COMPRESS_FILE
+TEST_F(DriverTest, TestCompressFileRejectsShortInputNameSafely) {
+  current_object = master_ob;
+
+  EXPECT_EQ(0, call_compress_file_efun("a"));
+  EXPECT_EQ(0, call_compress_file_efun("ab"));
+}
+
+#ifdef F_UNCOMPRESS_FILE
+TEST_F(DriverTest, TestCompressAndUncompressHandleLongOutputPathsSafely) {
+  current_object = master_ob;
+
+  const std::string compress_source_disk = "compress_long_output_source.txt";
+  const std::string compress_source_lpc = "/compress_long_output_source.txt";
+  const std::string uncompress_source_disk = "uncompress_long_output_source.txt";
+  const std::string uncompress_source_lpc = "/uncompress_long_output_source.txt";
+  const std::string uncompress_source_gz_lpc = "/uncompress_long_output_source.txt.gz";
+  const std::string long_compress_output = "/missing_dir/" + std::string(1100, 'c') + ".gz";
+  const std::string long_uncompress_output = "/missing_dir/" + std::string(1100, 'u');
+
+  std::remove(compress_source_disk.c_str());
+  std::remove(uncompress_source_disk.c_str());
+  std::remove("uncompress_long_output_source.txt.gz");
+
+  write_test_file(compress_source_disk, "compress payload");
+  write_test_file(uncompress_source_disk, "uncompress payload");
+
+  EXPECT_EQ(0, call_compress_file_efun(compress_source_lpc, &long_compress_output));
+  ASSERT_EQ(1, call_compress_file_efun(uncompress_source_lpc));
+  EXPECT_EQ(0, call_uncompress_file_efun(uncompress_source_gz_lpc, &long_uncompress_output));
+
+  std::remove(compress_source_disk.c_str());
+  std::remove(uncompress_source_disk.c_str());
+  std::remove("uncompress_long_output_source.txt.gz");
+}
+#endif
+#endif
+
+#ifdef F_UNCOMPRESS_FILE
+TEST_F(DriverTest, TestUncompressFileRejectsShortInputNameSafely) {
+  current_object = master_ob;
+
+  EXPECT_EQ(0, call_uncompress_file_efun("a"));
+  EXPECT_EQ(0, call_uncompress_file_efun("ab"));
+}
+#endif
+
+TEST_F(DriverTest, TestLoadObjectRejectsOverlongInheritedFileSafely) {
+  const std::string generated_source = "single/tests/compiler/fail/generated_inherit_too_long.c";
+  const std::string object_path = "/single/tests/compiler/fail/generated_inherit_too_long";
+  const std::string long_inherit_path = "/" + std::string(MAX_OBJECT_NAME_SIZE + 64, 'i');
+  object_t *obj = nullptr;
+
+  current_object = master_ob;
+  std::remove(generated_source.c_str());
+  write_test_file(generated_source, "inherit \"" + long_inherit_path + "\";\nvoid test() {}\n");
+
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    obj = find_object(object_path.c_str());
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  EXPECT_EQ(nullptr, obj);
+
+  std::remove(generated_source.c_str());
 }
 
 #ifdef PACKAGE_DWLIB
@@ -903,8 +1051,11 @@ TEST_F(DriverTest, TestAsciiChunkContinuesAfterExecTransfersInteractive) {
   user_del(ip);
   interactive_free_text(ip);
   FREE(ip);
-  // exec() 会重排对象生命周期；这里避免在测试清理阶段再次手动销毁迁移过的对象。
-  active_ob = nullptr;
+  ip = nullptr;
+  if (!(active_ob->flags & O_DESTRUCTED)) {
+    destruct_object(active_ob);
+  }
+  free_object(&active_ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive");
   ob = nullptr;
 }
 
@@ -922,7 +1073,9 @@ TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
   pop_context(&econ);
 
   ASSERT_NE(ob, nullptr);
+  add_ref(ob, "DriverTest::TestAsciiChunkStopsAfterProcessInputDestructsObject");
   call_lpc_method(ob, "clear_inputs");
+  clear_test_input_snapshot();
   call_lpc_method(ob, "enable_destroy_on_input");
 
   auto *ip = user_add();
@@ -933,32 +1086,27 @@ TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
 
   const unsigned char chunk[] = {'q', 'u', 'i', 't', '\n', 'n', 'e', 'x', 't', '\n'};
   EXPECT_EQ(1, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+  EXPECT_TRUE(ob->flags & O_DESTRUCTED);
 
-  auto *ret = call_lpc_method(ob, "query_input_history");
-  if (ret != nullptr) {
-    ASSERT_EQ(T_ARRAY, ret->type);
-    ASSERT_NE(ret->u.arr, nullptr);
-    ASSERT_EQ(1, ret->u.arr->size);
-    ASSERT_EQ(T_STRING, ret->u.arr->item[0].type);
-    EXPECT_STREQ("quit", ret->u.arr->item[0].u.string);
-  } else {
-    return;
-  }
-
-  if (ip != nullptr) {
-    if (ob->interactive == ip) {
-      ob->interactive = nullptr;
-    }
-    user_del(ip);
-    interactive_free_text(ip);
-    FREE(ip);
-    ip = nullptr;
-  }
+  auto history = query_test_input_history_snapshot();
+  ASSERT_EQ(1u, history.size());
+  EXPECT_EQ("quit", history[0]);
+  EXPECT_EQ("quit", query_test_input_snapshot());
 
   if (!(ob->flags & O_DESTRUCTED)) {
+    if (ip != nullptr) {
+      if (ob->interactive == ip) {
+        ob->interactive = nullptr;
+      }
+      user_del(ip);
+      interactive_free_text(ip);
+      FREE(ip);
+      ip = nullptr;
+    }
     destruct_object(ob);
   }
   free_object(&ob, "DriverTest::TestAsciiChunkStopsAfterProcessInputDestructsObject");
+  clear_test_input_snapshot();
 }
 
 TEST_F(DriverTest, TestProcessUserCommandSchedulesNextCommandAfterExec) {

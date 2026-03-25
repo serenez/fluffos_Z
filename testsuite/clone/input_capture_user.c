@@ -15,6 +15,7 @@ int process_input(string arg) {
     return 1;
   }
   if (destroy_on_input) {
+    master()->set_test_input_snapshot(last_input, input_history + ({}));
     destruct(this_object());
   }
   return 1;
