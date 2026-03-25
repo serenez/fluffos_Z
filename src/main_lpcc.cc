@@ -15,22 +15,51 @@
 #include "vm/vm.h"
 
 int main(int argc, char** argv) {
-  Tracer::start("trace_lpcc.json");
+  std::string trace_log;
+  std::string config_file;
+  std::string lpc_file;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--tracing") == 0) {
+      if (i + 1 >= argc) {
+        std::cerr << "--tracing require an argument" << std::endl;
+        return 1;
+      }
+      trace_log = argv[i + 1];
+      i++;
+      continue;
+    }
 
-  Tracer::setThreadName("lpcc main");
+    if (argv[i][0] == '-') {
+      std::cerr << "Usage: lpcc [--tracing trace.json] config_file lpc_file" << std::endl;
+      return 1;
+    }
+
+    if (config_file.empty()) {
+      config_file = argv[i];
+    } else if (lpc_file.empty()) {
+      lpc_file = argv[i];
+    } else {
+      std::cerr << "Usage: lpcc [--tracing trace.json] config_file lpc_file" << std::endl;
+      return 1;
+    }
+  }
+
+  if (!trace_log.empty()) {
+    Tracer::start(trace_log.c_str());
+    Tracer::setThreadName("lpcc main");
+  }
 
   ScopedTracer const trace(__PRETTY_FUNCTION__);
 
-  if (argc != 3) {
-    std::cerr << "Usage: lpcc config_file lpc_file" << std::endl;
+  if (config_file.empty() || lpc_file.empty()) {
+    std::cerr << "Usage: lpcc [--tracing trace.json] config_file lpc_file" << std::endl;
     return 1;
   }
 
   Tracer::begin("init_main", EventCategory::DEFAULT);
 
   // Initialize libevent, This should be done before executing LPC.
-  auto config = get_argument(0, argc, argv);
-  init_main(config, false);
+  init_main(config_file, false);
 
   Tracer::end("init_main", EventCategory::DEFAULT);
 
@@ -42,7 +71,7 @@ int main(int argc, char** argv) {
   }
 
   current_object = master_ob;
-  const char* file = argv[2];
+  const char* file = lpc_file.c_str();
   struct object_t* obj = nullptr;
 
   {
