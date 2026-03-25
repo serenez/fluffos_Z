@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_YY_C_USERS_VRUSTX_DESKTOP_FLUFFOS_Z_FLUFFOS_Z_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
-# define YY_YY_C_USERS_VRUSTX_DESKTOP_FLUFFOS_Z_FLUFFOS_Z_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED
+#ifndef YY_YY_GRAMMAR_AUTOGEN_H_INCLUDED
+# define YY_YY_GRAMMAR_AUTOGEN_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -117,7 +117,6 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 261 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/src/compiler/internal/grammar.y"
 
   LPC_INT number; /* 8 */
   LPC_FLOAT real; /* 8 */
@@ -147,7 +146,6 @@ union YYSTYPE
     int anchor;
   } anchored_string; /* 12 */
 
-#line 151 "C:/Users/vrustx/Desktop/fluffos_z/fluffos_Z/build/mingw64-generic/src/grammar.autogen.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -162,4 +160,4 @@ extern YYSTYPE yylval;
 int yyparse (void);
 
 
-#endif /* !YY_YY_C_USERS_VRUSTX_DESKTOP_FLUFFOS_Z_FLUFFOS_Z_BUILD_MINGW64_GENERIC_SRC_GRAMMAR_AUTOGEN_H_INCLUDED  */
+#endif /* !YY_YY_GRAMMAR_AUTOGEN_H_INCLUDED  */

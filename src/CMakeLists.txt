@@ -343,10 +343,10 @@ find_package(BISON 3.8)
 if (${BISON_FOUND})
   message(STATUS "BISON: ${BISON_VERSION}")
   BISON_TARGET(Grammar "${CMAKE_CURRENT_SOURCE_DIR}/compiler/internal/grammar.y"
-          ${CMAKE_CURRENT_BINARY_DIR}/grammar.autogen.cc
-          DEFINES_FILE "${CMAKE_CURRENT_BINARY_DIR}/grammar.autogen.h"
-          COMPILE_FLAGS "-Wall --color=auto -rall"
-          VERBOSE REPORT_FILE "${CMAKE_CURRENT_BINARY_DIR}/grammar.report"
+          "grammar.autogen.cc"
+          DEFINES_FILE "grammar.autogen.h"
+          COMPILE_FLAGS "-Wall --color=auto -rall --no-lines"
+          VERBOSE REPORT_FILE "grammar.report"
           )
   set(GENERATRED_GRAMMAR_FILES
           "${BISON_Grammar_OUTPUT_SOURCE}"

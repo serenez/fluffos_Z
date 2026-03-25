@@ -48,6 +48,7 @@ int main(int argc, char** argv) {
     Tracer::start(trace_log.c_str());
     Tracer::setThreadName("lpcc main");
   }
+  DEFER { Tracer::collect(); };
 
   ScopedTracer const trace(__PRETTY_FUNCTION__);
 
@@ -97,8 +98,6 @@ int main(int argc, char** argv) {
 
     dump_prog(obj->prog, stdout, 1 | 2);
   }
-
-  Tracer::collect();
 
   clear_state();
 
