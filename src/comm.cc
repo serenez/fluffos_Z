@@ -119,7 +119,40 @@ void maybe_schedule_user_command(interactive_t *user) {
     evtimer_add(user->ev_command, &zero_sec);
   }
 }
+
+void activate_user_input(interactive_t *user) {
+  if (!user || !user->ob || !IP_VALID(user, user->ob) || (user->iflags & CLOSING)) {
+    return;
+  }
+
+  if (user->ev_buffer) {
+    bufferevent_enable(user->ev_buffer, EV_READ);
+    auto *input = bufferevent_get_input(user->ev_buffer);
+    if (input && evbuffer_get_length(input) > 0) {
+      get_user_data(user);
+      return;
+    }
+  }
+
+  if (user->iflags & CMD_IN_BUF) {
+    maybe_schedule_user_command(user);
+  }
+}
 namespace {
+
+char *find_ascii_line_break(char *line_start, char *buffer_end) {
+  auto remaining = static_cast<size_t>(buffer_end - line_start);
+  auto *newline = reinterpret_cast<char *>(memchr(line_start, '\n', remaining));
+  auto *carriage_return = reinterpret_cast<char *>(memchr(line_start, '\r', remaining));
+
+  if (!newline) {
+    return carriage_return;
+  }
+  if (!carriage_return) {
+    return newline;
+  }
+  return newline < carriage_return ? newline : carriage_return;
+}
 
 int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, int num_bytes) {
   int processed = 0;
@@ -129,18 +162,21 @@ int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, in
 
   auto *line_start = ip->text + ip->text_start;
   while (true) {
-    auto remaining = static_cast<size_t>((ip->text + ip->text_end) - line_start);
-    auto *newline = reinterpret_cast<char *>(memchr(line_start, '\n', remaining));
-    if (!newline) {
+    auto *line_break = find_ascii_line_break(line_start, ip->text + ip->text_end);
+    if (!line_break) {
       break;
     }
 
-    ip->text_start = static_cast<int>((newline + 1) - ip->text);
+    auto terminator = *line_break;
+    auto *line_end = line_break;
+    *line_break = '\0';
+    ip->text_start = static_cast<int>((line_break + 1) - ip->text);
 
-    auto *line_end = newline;
-    *newline = '\0';
-    if (line_end > line_start && *(line_end - 1) == '\r') {
-      *--line_end = '\0';
+    if (ip->text_start < ip->text_end) {
+      auto next = ip->text[ip->text_start];
+      if ((terminator == '\r' && next == '\n') || (terminator == '\n' && next == '\r')) {
+        ip->text[ip->text_start++] = '\0';
+      }
     }
 
     if (!(ip->ob->flags & O_DESTRUCTED)) {
@@ -151,7 +187,9 @@ int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, in
       push_malloced_string(str);
       set_eval(max_eval_cost);
       safe_apply(APPLY_PROCESS_INPUT, owner, 1, ORIGIN_DRIVER);
-      bool still_attached = !(owner->flags & O_DESTRUCTED) && owner->interactive == ip;
+      auto *current_owner = ip->ob;
+      bool still_attached =
+          current_owner && !(current_owner->flags & O_DESTRUCTED) && current_owner->interactive == ip;
       free_object(&owner, "process_ascii_chunk_internal");
       if (!still_attached) {
         processed++;
@@ -175,6 +213,8 @@ void cleanup_pending_user_internal(interactive_t *user, bool close_socket) {
   if (!user) {
     return;
   }
+
+  user->iflags &= ~PENDING_LOGON;
 
   bool had_ev_buffer = user->ev_buffer != nullptr;
 
@@ -244,6 +284,7 @@ void on_user_logon_timer(evutil_socket_t /*fd*/, short /*what*/, void *arg) {
     event_free(user->ev_logon);
     user->ev_logon = nullptr;
   }
+  user->iflags &= ~PENDING_LOGON;
 
   on_user_logon(user);
 }
@@ -260,11 +301,13 @@ bool schedule_user_logon_internal(event_base *base, interactive_t *user) {
   if (!user->ev_logon) {
     return false;
   }
+  user->iflags |= PENDING_LOGON;
 
   struct timeval zero_sec = {0, 0};
   if (evtimer_add(user->ev_logon, &zero_sec) != 0) {
     event_free(user->ev_logon);
     user->ev_logon = nullptr;
+    user->iflags &= ~PENDING_LOGON;
     return false;
   }
 
@@ -307,6 +350,13 @@ void on_user_read(bufferevent * /*bev*/, void *arg) {
     return;
   }
 
+  if (user->iflags & PENDING_LOGON) {
+    if (user->ev_buffer) {
+      bufferevent_disable(user->ev_buffer, EV_READ);
+    }
+    return;
+  }
+
   // Read user input
   get_user_data(user);
 
@@ -333,7 +383,11 @@ void on_user_events(bufferevent * /*bev*/, short events, void *arg) {
 
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
     user->iflags |= NET_DEAD;
-    remove_interactive(user->ob, 0);
+    if (user->iflags & PENDING_LOGON) {
+      cleanup_pending_user_internal(user, false);
+    } else {
+      remove_interactive(user->ob, 0);
+    }
   } else {
     debug(event, "on_user_events: ignored unknown events: %d\n", events);
   }
@@ -412,6 +466,10 @@ void new_conn_handler(evconnlistener *listener, evutil_socket_t fd, struct socka
 
     if (user->connection_type == PORT_TYPE_TELNET) {
       user->telnet = net_telnet_init(user);
+      if (!user->telnet) {
+        cleanup_pending_user_internal(user, true);
+        return;
+      }
       send_initial_telnet_negotiations(user);
     }
 
@@ -495,11 +553,15 @@ void on_user_logon(interactive_t *user) {
   /* master_ob->interactive can be zero if the master object self
    destructed in the above (don't ask) */
   set_command_giver(nullptr);
-  if (ret == nullptr || ret == (svalue_t *)-1 || ret->type != T_OBJECT || !master_ob->interactive) {
+  if (ret == nullptr || ret == (svalue_t *)-1 || ret->type != T_OBJECT || master->interactive != user) {
     debug_message("Can not accept connection from %s due to error in connect().\n",
                   sockaddr_to_string(reinterpret_cast<sockaddr *>(&user->addr), user->addrlen));
-    if (master_ob->interactive) {
-      remove_interactive(master_ob, 0);
+    master->flags &= ~O_ONCE_INTERACTIVE;
+    if (master->interactive == user) {
+      remove_interactive(master, 0);
+    } else {
+      cleanup_pending_user_internal(user, false);
+      free_object(&master, "new_user");
     }
     return;
   }
@@ -537,11 +599,16 @@ void on_user_logon(interactive_t *user) {
     debug_message("new_conn_handler: logon() on object %s has failed, the user is disconnected.\n",
                   ob->obname);
     remove_interactive(ob, false);
-  } else if (ob->flags & O_DESTRUCTED) {
+    set_command_giver(nullptr);
+    return;
+  } else if (ob->flags & O_DESTRUCTED && ob->interactive) {
     // logon() may decide not to allow user connect by destroying objects.
     remove_interactive(ob, true);
+    set_command_giver(nullptr);
+    return;
   }
   set_command_giver(nullptr);
+  activate_user_input(user);
 }
 
 /*
@@ -1153,6 +1220,9 @@ void on_user_websocket_received(interactive_t *ip, const char *data, size_t len)
 
   if (cmd_in_buf(ip)) {
     ip->iflags |= CMD_IN_BUF;
+    if (ip->iflags & PENDING_LOGON) {
+      return;
+    }
 
     maybe_schedule_user_command(ip);
   }
@@ -1177,6 +1247,9 @@ void on_user_websocket_telnet_received(interactive_t *ip, const char *data, size
     // search for command.
     if (cmd_in_buf(ip)) {
       ip->iflags |= CMD_IN_BUF;
+      if (ip->iflags & PENDING_LOGON) {
+        return;
+      }
 
       maybe_schedule_user_command(ip);
     }
@@ -1372,6 +1445,7 @@ static int escape_command(interactive_t *ip, const char *user_command) {
 
 static void process_input(interactive_t *ip, char *user_command) {
   svalue_t *ret;
+  auto *process_input_owner = command_giver;
 
   if (!(ip->iflags & HAS_PROCESS_INPUT)) {
     safe_parse_command(user_command, command_giver);
@@ -1383,8 +1457,10 @@ static void process_input(interactive_t *ip, char *user_command) {
    * support for things like command history and mud shell
    * programming languages.
    */
+  add_ref(process_input_owner, "process_input");
   copy_and_push_string(user_command);
-  ret = safe_apply(APPLY_PROCESS_INPUT, command_giver, 1, ORIGIN_DRIVER);
+  ret = safe_apply(APPLY_PROCESS_INPUT, process_input_owner, 1, ORIGIN_DRIVER);
+  free_object(&process_input_owner, "process_input");
   if (!IP_VALID(ip, command_giver)) {
     return;
   }
@@ -1492,7 +1568,7 @@ exit:
   /*
    * Print a prompt if user is still here.
    */
-  if (IP_VALID(ip, command_giver)) {
+  if (ip && ip->ob && IP_VALID(ip, ip->ob)) {
     if (ip->input_to == nullptr) {
       print_prompt(ip);
     }

@@ -128,7 +128,11 @@ int ws_ascii_callback(struct lws *wsi, enum lws_callback_reasons reason, void *u
 
       auto *ip = pss->user;
       if (ip) {
-        remove_interactive(ip->ob, 0);
+        if (ip->iflags & PENDING_LOGON) {
+          cleanup_pending_user(ip, false);
+        } else {
+          remove_interactive(ip->ob, 0);
+        }
         pss->user = nullptr;
       }
 

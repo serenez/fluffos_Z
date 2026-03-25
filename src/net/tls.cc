@@ -33,11 +33,15 @@ SSL_CTX* tls_server_init(std::string_view file_cert, std::string_view file_key) 
   SSL_CTX* server_ctx;
 
   server_ctx = SSL_CTX_new(SSLv23_server_method());
+  if (!server_ctx) {
+    return nullptr;
+  }
 
   if (!SSL_CTX_use_certificate_chain_file(server_ctx, file_cert.data()) ||
       !SSL_CTX_use_PrivateKey_file(server_ctx, file_key.data(), SSL_FILETYPE_PEM)) {
     debug_message("Couldn't read '%s' or '%s' file. Please verify these are valid PEM files.",
                   file_cert.data(), file_key.data());
+    SSL_CTX_free(server_ctx);
     return nullptr;
   }
   SSL_CTX_set_options(server_ctx, SSL_OP_NO_SSLv2);
@@ -83,6 +87,9 @@ SSL_CTX* tls_client_init() {
   SSL_CTX* ctx;
 
   ctx = SSL_CTX_new(TLS_client_method());
+  if (!ctx) {
+    return nullptr;
+  }
 
   SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
   SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv3);

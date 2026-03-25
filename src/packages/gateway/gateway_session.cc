@@ -181,6 +181,22 @@ static GatewaySession* find_session_by_id(const char* session_id) {
     return (it != g_sessions.end()) ? it->second.get() : nullptr;
 }
 
+static object_t* resolve_active_session_owner(const char* session_id, object_t* fallback = nullptr) {
+    GatewaySession* sess = find_session_by_id(session_id);
+    if (sess && sess->user_ob && sess->user_ob->interactive &&
+        sess->user_ob->interactive->ob == sess->user_ob &&
+        !(sess->user_ob->flags & O_DESTRUCTED)) {
+        return sess->user_ob;
+    }
+
+    if (fallback && fallback->interactive && fallback->interactive->ob == fallback &&
+        !(fallback->flags & O_DESTRUCTED)) {
+        return fallback;
+    }
+
+    return nullptr;
+}
+
 /**
  * 通过对象查找会话 (v2.4 - UID 校验防止 ABA 问题)
  * 使用 load_time 进行唯一性校验，防止地址重用导致的消息串路
@@ -248,10 +264,10 @@ int gateway_send_to_session(const char* session_id, const char* data, size_t len
 
     // 发送
     if (final_json) {
-        gateway_send_raw_to_fd_owned(sess->master_fd, final_json, final_len);
+        return gateway_send_raw_to_fd_owned(sess->master_fd, final_json, final_len);
     }
 
-    return 1;
+    return 0;
 }
 
 bool gateway_is_session(object_t* ob) {
@@ -395,22 +411,47 @@ object_t* gateway_create_session_internal(int master_fd, const char* session_id,
     restore_command_giver();
     current_interactive = nullptr;
 
+    object_t* active_ob = resolve_active_session_owner(session_id, ob);
+
     if (logon_ret == nullptr) {
         GW_LOG("[Gateway] gateway_logon() failed for session %s, disconnecting user\n", session_id);
-        if (ob->interactive) {
-            remove_interactive(ob, 0);
+        if (active_ob && active_ob->interactive) {
+            remove_interactive(active_ob, 0);
+        } else {
+            auto failed_it = g_sessions.find(session_id);
+            if (failed_it != g_sessions.end()) {
+                if (failed_it->second->user_ob) {
+                    g_obj_to_session.erase(failed_it->second->user_ob);
+                }
+                g_sessions.erase(failed_it);
+            }
+            free_object(&ob, "gateway_create_session");
         }
         return nullptr;
     }
 
-    if (ob->flags & O_DESTRUCTED) {
-        if (ob->interactive) {
-            remove_interactive(ob, 1);
+    if (!active_ob) {
+        GW_LOG("[Gateway] gateway_logon() left session %s without an active interactive owner\n",
+               session_id);
+        auto orphan_it = g_sessions.find(session_id);
+        if (orphan_it != g_sessions.end()) {
+            if (orphan_it->second->user_ob) {
+                g_obj_to_session.erase(orphan_it->second->user_ob);
+            }
+            g_sessions.erase(orphan_it);
+        }
+        free_object(&ob, "gateway_create_session");
+        return nullptr;
+    }
+
+    if (active_ob->flags & O_DESTRUCTED) {
+        if (active_ob->interactive) {
+            remove_interactive(active_ob, 1);
         }
         return nullptr;
     }
 
-    return ob;
+    return active_ob;
 }
 
 // ============================================================
@@ -441,8 +482,19 @@ int gateway_destroy_session_internal(const char* session_id, const char* reason_
         safe_apply("gateway_disconnected", ob, 2, ORIGIN_DRIVER);
         restore_command_giver();
 
-        sess->master_fd = -1;  // 避免发送回环通知
-        remove_interactive(ob, 0);
+        auto *active_ob = resolve_active_session_owner(session_id, ob);
+        auto *active_sess = find_session_by_id(session_id);
+        if (active_sess) {
+            active_sess->master_fd = -1;  // 避免发送回环通知
+        }
+        if (active_ob && active_ob->interactive) {
+            remove_interactive(active_ob, 0);
+        } else if (active_sess) {
+            if (active_sess->user_ob) {
+                g_obj_to_session.erase(active_sess->user_ob);
+            }
+            g_sessions.erase(session_id);
+        }
     } else {
         if (ob) g_obj_to_session.erase(ob);
         g_sessions.erase(it);
@@ -555,6 +607,7 @@ void gateway_session_exec_update(object_t* new_ob, object_t* old_ob) {
         node.key() = new_ob;
         g_obj_to_session.insert(std::move(node));
         sess->user_ob = new_ob;
+        sess->user_ob_load_time = new_ob->load_time;
     }
 }
 

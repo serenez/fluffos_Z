@@ -114,6 +114,8 @@ LPC_INT call_gateway_config_number(const char *key, LPC_INT value) {
   return result;
 }
 
+void noop_timer_callback(evutil_socket_t, short, void *) {}
+
 }  // namespace
 
 // Test fixture class
@@ -524,6 +526,35 @@ TEST_F(DriverTest, TestGatewaySessionStartsWithSmallSharedInputBuffer) {
   destruct_object(ob);
 }
 
+TEST_F(DriverTest, TestGatewaySessionExecLogonKeepsSessionLookupWorking) {
+  svalue_t login_data{};
+  login_data.type = T_NUMBER;
+  login_data.u.number = 0;
+
+  set_test_login_object("/clone/gateway_login_exec_example");
+  auto *ob = gateway_create_session_internal(1, "unit-test-session-exec", &login_data,
+                                             "127.0.0.1", 9527);
+  reset_test_login_object();
+
+  ASSERT_NE(ob, nullptr);
+  ASSERT_NE(ob->interactive, nullptr);
+  EXPECT_TRUE(ob->interactive->iflags & GATEWAY_SESSION);
+  ASSERT_NE(ob->obname, nullptr);
+  EXPECT_NE(std::string::npos, std::string(ob->obname).find("clone/gateway_exec_user"));
+
+  auto *session_info = call_lpc_method(ob, "query_gateway_session_snapshot");
+  ASSERT_NE(session_info, nullptr);
+  EXPECT_EQ(T_MAPPING, session_info->type);
+
+  auto *real_ip = gateway_get_ip(ob);
+  ASSERT_NE(real_ip, nullptr);
+  EXPECT_STREQ("127.0.0.1", real_ip);
+
+  ASSERT_EQ(1, gateway_destroy_session_internal("unit-test-session-exec", "unit_test", "done"));
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestGatewaySessionExecLogonKeepsSessionLookupWorking");
+}
+
 TEST_F(DriverTest, TestMudPacketCompletionRequiresFullPayloadBytes) {
   constexpr int kPacketSize = 128 * 1024;
 
@@ -686,6 +717,93 @@ TEST_F(DriverTest, TestAsciiChunkProcessesCommandAfterCrLfInSameRead) {
   free_object(&ob, "DriverTest::TestAsciiChunkProcessesCommandAfterCrLfInSameRead");
 }
 
+TEST_F(DriverTest, TestAsciiChunkProcessesBareCarriageReturn) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ob->interactive = ip;
+
+  const unsigned char chunk[] = {'l', 'o', 'o', 'k', '\r'};
+  EXPECT_EQ(1, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+
+  auto *ret = call_lpc_method(ob, "query_last_input");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_STRING, ret->type);
+  ASSERT_NE(ret->u.string, nullptr);
+  EXPECT_STREQ("look", ret->u.string);
+
+  ob->interactive = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestAsciiChunkProcessesBareCarriageReturn");
+}
+
+TEST_F(DriverTest, TestAsciiChunkContinuesAfterExecTransfersInteractive) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+  call_lpc_method(ob, "enable_exec_on_input");
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ob->interactive = ip;
+
+  const unsigned char chunk[] = {'f', 'i', 'r', 's', 't', '\n', 's', 'e', 'c', 'o', 'n', 'd', '\n'};
+  EXPECT_EQ(2, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
+
+  auto *active_ob = ip->ob;
+  ASSERT_NE(active_ob, nullptr);
+  ASSERT_NE(active_ob, ob);
+  add_ref(active_ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive");
+
+  auto *ret = call_lpc_method(active_ob, "query_input_history");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_ARRAY, ret->type);
+  ASSERT_NE(ret->u.arr, nullptr);
+  ASSERT_EQ(2, ret->u.arr->size);
+  EXPECT_STREQ("first", ret->u.arr->item[0].u.string);
+  EXPECT_STREQ("second", ret->u.arr->item[1].u.string);
+
+  active_ob->interactive = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(active_ob);
+  free_object(&active_ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive");
+  free_object(&ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive:old");
+}
+
 TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
   object_t *ob = nullptr;
 
@@ -721,6 +839,66 @@ TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
     destruct_object(ob);
   }
   free_object(&ob, "DriverTest::TestAsciiChunkStopsAfterProcessInputDestructsObject");
+}
+
+TEST_F(DriverTest, TestProcessUserCommandSchedulesNextCommandAfterExec) {
+  object_t *ob = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = find_object("/clone/input_capture_user");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+  call_lpc_method(ob, "enable_exec_on_input");
+
+  auto *base = event_base_new();
+  ASSERT_NE(base, nullptr);
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+
+  ip->ob = ob;
+  ip->connection_type = PORT_TYPE_ASCII;
+  ip->prompt = "> ";
+  ip->iflags = CMD_IN_BUF | HAS_PROCESS_INPUT;
+  ip->ev_buffer = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+  ip->ev_command = evtimer_new(base, noop_timer_callback, nullptr);
+  ASSERT_NE(ip->ev_buffer, nullptr);
+  ASSERT_NE(ip->ev_command, nullptr);
+  ob->interactive = ip;
+
+  std::memcpy(ip->text, "first\nsecond\n", 13);
+  ip->text_end = 13;
+  ip->text_start = 0;
+
+  EXPECT_EQ(1, process_user_command(ip));
+  EXPECT_NE(ip->ob, ob);
+  EXPECT_TRUE(event_pending(ip->ev_command, EV_TIMEOUT, nullptr));
+
+  auto *active_ob = ip->ob;
+  ASSERT_NE(active_ob, nullptr);
+  add_ref(active_ob, "DriverTest::TestProcessUserCommandSchedulesNextCommandAfterExec");
+
+  active_ob->interactive = nullptr;
+  bufferevent_free(ip->ev_buffer);
+  ip->ev_buffer = nullptr;
+  event_free(ip->ev_command);
+  ip->ev_command = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destruct_object(active_ob);
+  free_object(&active_ob, "DriverTest::TestProcessUserCommandSchedulesNextCommandAfterExec");
+  free_object(&ob, "DriverTest::TestProcessUserCommandSchedulesNextCommandAfterExec:old");
+  event_base_free(base);
 }
 
 TEST_F(DriverTest, TestScheduledUserLogonCanBeCancelledBeforeDispatch) {

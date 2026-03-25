@@ -114,6 +114,13 @@ int ws_telnet_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
       //handshake complete so lets setup telnet layer
       ip->telnet = net_telnet_init(ip);
+      if (!ip->telnet) {
+        cleanup_pending_user(ip, false);
+        pss->user = nullptr;
+        evbuffer_free(pss->buffer);
+        pss->buffer = nullptr;
+        return -1;
+      }
       send_initial_telnet_negotiations(ip);
 
       auto base = evconnlistener_get_base(port->ev_conn);
@@ -131,7 +138,11 @@ int ws_telnet_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
       auto *ip = pss->user;
       if (ip) {
-        remove_interactive(ip->ob, 0);
+        if (ip->iflags & PENDING_LOGON) {
+          cleanup_pending_user(ip, false);
+        } else {
+          remove_interactive(ip->ob, 0);
+        }
         pss->user = nullptr;
       }
 

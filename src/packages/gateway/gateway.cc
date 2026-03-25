@@ -253,6 +253,15 @@ static void apply_gateway_receive(object_t* user, svalue_t* data_sv) {
     restore_command_giver();
 }
 
+static std::vector<int> collect_master_ids() {
+    std::vector<int> ids;
+    ids.reserve(g_masters.size());
+    for (const auto& pair : g_masters) {
+        ids.push_back(pair.first);
+    }
+    return ids;
+}
+
 static bool extract_cmd_text_fast(yyjson_val* data, const char** out_text) {
     if (!data || !out_text) return false;
     *out_text = nullptr;
@@ -576,6 +585,7 @@ static void remove_master(int fd, const char* reason) {
 // ⭐ 优化：批量大小从 50 增加到 200，减少回调次数 4 倍
 static void conn_readcb(struct bufferevent *bev, void *ctx) {
     GatewayMaster *master = (GatewayMaster *)ctx;
+    int master_fd = master->fd;
     struct evbuffer *input = bufferevent_get_input(bev);
 
     // ⭐ 批量处理循环：每次最多处理200条消息
@@ -653,8 +663,13 @@ static void conn_readcb(struct bufferevent *bev, void *ctx) {
 
         // Successfully parsed, dispatch message
         yyjson_val* msg = doc.root();
-        dispatch_message(master->fd, msg);
-        master->messages_received++;
+        dispatch_message(master_fd, msg);
+
+        auto current = g_masters.find(master_fd);
+        if (current == g_masters.end() || current->second->bev != bev) {
+            return;
+        }
+        current->second->messages_received++;
 
         // ✅ doc 自动释放（即使 longjmp）
 
@@ -760,8 +775,11 @@ int gateway_send_raw_to_fd(int fd, const char *data, size_t len) {
 
     // 构造完整消息 [长度头][数据]，快速写入。
     uint32_t len_net = htonl((uint32_t)len);
-    evbuffer_add(output, &len_net, GATEWAY_HEADER_SIZE);
-    evbuffer_add(output, data, len);
+    if (evbuffer_add(output, &len_net, GATEWAY_HEADER_SIZE) != 0 ||
+        evbuffer_add(output, data, len) != 0) {
+        remove_master(fd, "send buffer write failed");
+        return 0;
+    }
 
     master->messages_sent++;
     g_stats.messages_sent++;
@@ -1037,8 +1055,9 @@ void f_gateway_ping_master() {
     int result = 0;
 
     if (master_fd <= 0) {
-        for (const auto& pair : g_masters) {
-            result += gateway_ping_master(pair.first);
+        auto master_ids = collect_master_ids();
+        for (int fd : master_ids) {
+            result += gateway_ping_master(fd);
         }
     } else {
         result = gateway_ping_master(master_fd);
@@ -1174,8 +1193,13 @@ void f_gateway_send() {
                 size_t final_len = 0;
                 char* final_json = yyjson_mut_write(doc, 0, &final_len);
                 if (final_json) {
-                    for (const auto& entry : g_masters) {
-                        GatewayMaster* master = entry.second.get();
+                    auto master_ids = collect_master_ids();
+                    for (int master_fd : master_ids) {
+                        auto it = g_masters.find(master_fd);
+                        if (it == g_masters.end()) {
+                            continue;
+                        }
+                        GatewayMaster* master = it->second.get();
                         if (!master->bev || master->marked_for_delete) continue;
                         if (gateway_send_raw_to_fd(master->fd, final_json, final_len)) {
                             send_result = 1;

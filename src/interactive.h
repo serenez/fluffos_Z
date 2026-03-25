@@ -39,6 +39,7 @@
 #define USING_MSDP 0x100000 /* we've negotiated msdp */
 #define GATEWAY_SESSION 0x200000 /* this is a gateway session */
 #define GATEWAY_MSGPACK 0x400000 /* gateway session uses msgpack/json */
+#define PENDING_LOGON 0x800000 /* logon has been scheduled but not completed */
 
 // from ICU
 struct UConverter;
