@@ -7,6 +7,7 @@ title: driver
 * [config](config.html)
 * [gateway](gateway.html)
 * [malloc](malloc.html)
+* [maintenance_journal](maintenance_journal.html)
 * [parse_tree](parse_tree.html)
 * [stackmachine](stackmachine.html)
 * [uncommitted_review_2026_03_24](uncommitted_review_2026_03_24.html)
