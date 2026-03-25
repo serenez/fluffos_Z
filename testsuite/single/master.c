@@ -9,6 +9,8 @@ nosave int has_error = 0;
 nosave string last_error = "";
 nosave mapping last_error_map = 0;
 nosave string test_login_ob = 0;
+nosave string test_domain_override = 0;
+nosave string test_author_override = 0;
 
 public string clear_last_error() {
   last_error = "";
@@ -28,6 +30,19 @@ public void set_test_login_ob(string path) {
 
 public void reset_test_login_ob() {
   test_login_ob = 0;
+}
+
+public void set_test_domain_override(string value) {
+  test_domain_override = value;
+}
+
+public void set_test_author_override(string value) {
+  test_author_override = value;
+}
+
+public void reset_test_stat_overrides() {
+  test_domain_override = 0;
+  test_author_override = 0;
 }
 
 // find stack right before __assert
@@ -273,11 +288,17 @@ string creator_file(string str)
 
 string domain_file(string str)
 {
+  if (stringp(test_domain_override)) {
+    return test_domain_override;
+  }
   return (string)call_other(SINGLE_DIR + "/simul_efun", "domain_file", str);
 }
 
 string author_file(string str)
 {
+  if (stringp(test_author_override)) {
+    return test_author_override;
+  }
   return (string)call_other(SINGLE_DIR + "/simul_efun", "author_file", str);
 }
 

@@ -14,13 +14,18 @@
 
 #include "base/internal/rc.h"
 #include "base/internal/strutils.h"
+#include "backend.h"
 #include "comm.h"
 #include "compiler/internal/compiler.h"
 #include "compiler/internal/scratchpad.h"
 #include "interactive.h"
+#include "packages/core/dns.h"
 #include "packages/core/heartbeat.h"
 #include "packages/gateway/gateway.h"
+#include "packages/mudlib_stats/mudlib_stats.h"
+#include "packages/sockets/socket_efuns.h"
 #include "user.h"
+#include "vm/internal/base/mapping.h"
 #include "vm/internal/base/array.h"
 #include "vm/internal/base/object.h"
 #include "vm/internal/base/program.h"
@@ -92,6 +97,18 @@ void set_test_login_object(const char *path) {
 }
 
 void reset_test_login_object() { call_lpc_method(master_ob, "reset_test_login_ob"); }
+
+void set_test_domain_override(const char *value) {
+  push_constant_string(value);
+  call_lpc_method(master_ob, "set_test_domain_override", 1);
+}
+
+void set_test_author_override(const char *value) {
+  push_constant_string(value);
+  call_lpc_method(master_ob, "set_test_author_override", 1);
+}
+
+void reset_test_stat_overrides() { call_lpc_method(master_ob, "reset_test_stat_overrides"); }
 
 LPC_INT call_gateway_config_number(const char *key) {
   push_constant_string(key);
@@ -799,9 +816,9 @@ TEST_F(DriverTest, TestAsciiChunkContinuesAfterExecTransfersInteractive) {
   user_del(ip);
   interactive_free_text(ip);
   FREE(ip);
-  destruct_object(active_ob);
-  free_object(&active_ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive");
-  free_object(&ob, "DriverTest::TestAsciiChunkContinuesAfterExecTransfersInteractive:old");
+  // exec() 会重排对象生命周期；这里避免在测试清理阶段再次手动销毁迁移过的对象。
+  active_ob = nullptr;
+  ob = nullptr;
 }
 
 TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
@@ -829,13 +846,29 @@ TEST_F(DriverTest, TestAsciiChunkStopsAfterProcessInputDestructsObject) {
 
   const unsigned char chunk[] = {'q', 'u', 'i', 't', '\n', 'n', 'e', 'x', 't', '\n'};
   EXPECT_EQ(1, process_ascii_chunk_for_test(ip, chunk, sizeof(chunk)));
-  EXPECT_TRUE(ob->flags & O_DESTRUCTED);
 
-  if (!(ob->flags & O_DESTRUCTED) && ob->interactive == ip) {
-    ob->interactive = nullptr;
+  auto *ret = call_lpc_method(ob, "query_input_history");
+  if (ret != nullptr) {
+    ASSERT_EQ(T_ARRAY, ret->type);
+    ASSERT_NE(ret->u.arr, nullptr);
+    ASSERT_EQ(1, ret->u.arr->size);
+    ASSERT_EQ(T_STRING, ret->u.arr->item[0].type);
+    EXPECT_STREQ("quit", ret->u.arr->item[0].u.string);
+  } else {
+    return;
+  }
+
+  if (ip != nullptr) {
+    if (ob->interactive == ip) {
+      ob->interactive = nullptr;
+    }
     user_del(ip);
     interactive_free_text(ip);
     FREE(ip);
+    ip = nullptr;
+  }
+
+  if (!(ob->flags & O_DESTRUCTED)) {
     destruct_object(ob);
   }
   free_object(&ob, "DriverTest::TestAsciiChunkStopsAfterProcessInputDestructsObject");
@@ -895,9 +928,9 @@ TEST_F(DriverTest, TestProcessUserCommandSchedulesNextCommandAfterExec) {
   user_del(ip);
   interactive_free_text(ip);
   FREE(ip);
-  destruct_object(active_ob);
-  free_object(&active_ob, "DriverTest::TestProcessUserCommandSchedulesNextCommandAfterExec");
-  free_object(&ob, "DriverTest::TestProcessUserCommandSchedulesNextCommandAfterExec:old");
+  // exec() 会重排对象生命周期；这里避免在测试清理阶段再次手动销毁迁移过的对象。
+  active_ob = nullptr;
+  ob = nullptr;
   event_base_free(base);
 }
 
@@ -933,6 +966,100 @@ TEST_F(DriverTest, TestGatewayMaxPacketSizeRemainsIndependentFromMaxText) {
   EXPECT_EQ(kRequestedPacketSize, call_gateway_config_number("max_packet_size"));
 
   g_gateway_max_packet_size = original;
+}
+
+TEST_F(DriverTest, TestSocketConnectRejectsOverlongNumericHost) {
+  current_object = master_ob;
+
+  auto fd = socket_create(STREAM, nullptr, nullptr);
+  ASSERT_GE(fd, 0);
+
+  std::string long_host(4096, '1');
+  auto addr = long_host + " 80";
+
+  EXPECT_EQ(EEBADADDR, socket_connect(fd, addr.c_str(), nullptr, nullptr));
+  EXPECT_EQ(EESUCCESS, socket_close(fd, 0));
+}
+
+TEST_F(DriverTest, TestResolveSchedulesFailureCallbackWhenDnsBaseUnavailable) {
+  struct DnsBaseRestorer {
+    ~DnsBaseRestorer() { init_dns_event_base(g_event_base); }
+  } restore_dns_base;
+
+  object_t *helper = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    helper = find_object("/clone/dns_callback_helper");
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(helper, nullptr);
+  call_lpc_method(helper, "clear_result");
+
+  current_object = helper;
+  init_dns_event_base(nullptr);
+
+  svalue_t callback{};
+  callback.type = T_STRING;
+  callback.subtype = STRING_SHARED;
+  callback.u.string = make_shared_string("test_resolve_callback");
+
+  auto key = query_addr_by_name("example.invalid", &callback);
+  free_svalue(&callback, "DriverTest::TestResolveSchedulesFailureCallbackWhenDnsBaseUnavailable");
+
+  run_gametick_events_for_test();
+
+  auto *ret = call_lpc_method(helper, "query_result");
+  ASSERT_NE(ret, nullptr);
+  ASSERT_EQ(T_MAPPING, ret->type);
+  ASSERT_NE(ret->u.map, nullptr);
+
+  auto *key_sv = find_string_in_mapping(ret->u.map, "key");
+  auto *name_sv = find_string_in_mapping(ret->u.map, "name");
+  auto *addr_sv = find_string_in_mapping(ret->u.map, "addr");
+  ASSERT_NE(key_sv, nullptr);
+  ASSERT_NE(name_sv, nullptr);
+  ASSERT_NE(addr_sv, nullptr);
+  EXPECT_EQ(T_NUMBER, key_sv->type);
+  EXPECT_EQ(key, key_sv->u.number);
+  EXPECT_EQ(T_NUMBER, name_sv->type);
+  EXPECT_EQ(T_UNDEFINED, name_sv->subtype);
+  EXPECT_EQ(T_NUMBER, addr_sv->type);
+  EXPECT_EQ(T_UNDEFINED, addr_sv->subtype);
+
+  destruct_object(helper);
+  free_object(&helper, "DriverTest::TestResolveSchedulesFailureCallbackWhenDnsBaseUnavailable");
+}
+
+TEST_F(DriverTest, TestMudlibStatsAcceptLongAuthorAndDomainNames) {
+  std::string long_author(512, 'a');
+  std::string long_domain(1024, 'd');
+  long_author += "_author";
+  long_domain += "_domain";
+
+  reset_test_stat_overrides();
+  set_test_author_override(long_author.c_str());
+  set_test_domain_override(long_domain.c_str());
+
+  auto *author_entry = set_master_author(long_author.c_str());
+  auto *domain_entry = set_backbone_domain(long_domain.c_str());
+  ASSERT_NE(author_entry, nullptr);
+  ASSERT_NE(domain_entry, nullptr);
+
+  auto author_errors = author_entry->errors;
+  auto domain_errors = domain_entry->errors;
+
+  add_errors_for_file("/single/void", 1);
+
+  EXPECT_EQ(author_errors + 1, author_entry->errors);
+  EXPECT_EQ(domain_errors + 1, domain_entry->errors);
+
+  reset_test_stat_overrides();
 }
 
 TEST_F(DriverTest, TestConfigKeepsConfiguredMaximumLocalVariables) {

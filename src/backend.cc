@@ -171,6 +171,11 @@ TickEvent *add_gametick_event(int delay_ticks, TickEvent::callback_type callback
   return event;
 }
 
+void run_gametick_events_for_test() {
+  call_tick_events();
+  g_current_gametick++;
+}
+
 namespace {
 void on_walltime_event(evutil_socket_t /*fd*/, short /*what*/, void *arg) {
   auto *event = reinterpret_cast<TickEvent *>(arg);

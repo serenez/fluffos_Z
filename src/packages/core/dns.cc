@@ -12,9 +12,13 @@
 static struct evdns_base *g_dns_base = nullptr;
 
 void init_dns_event_base(struct event_base *base) {
+  if (g_dns_base != nullptr) {
+    evdns_base_free(g_dns_base, 0);
+    g_dns_base = nullptr;
+  }
+
   // Configure a DNS resolver with default nameserver
   if (base == nullptr) {
-    g_dns_base = nullptr;
     debug_message("init_dns_event_base: skipped because event base is unavailable.\n");
     return;
   }
@@ -56,6 +60,11 @@ void on_addr_name_result(int err, char type, int count, int /*ttl*/, void *addre
 
 // Start a reverse lookup.
 void query_name_by_addr(object_t *ob) {
+  if (g_dns_base == nullptr) {
+    debug(dns, "query_name_by_addr: skipped because dns resolver is unavailable.\n");
+    return;
+  }
+
   auto *query = new addr_name_query_t;
 
   const char *addr = query_ip_number(ob);
@@ -82,6 +91,11 @@ void query_name_by_addr(object_t *ob) {
     in_addr *addr4 = &(reinterpret_cast<sockaddr_in *>(&query->addr))->sin_addr;
     query->req = evdns_base_resolve_reverse(g_dns_base, addr4, 0, on_addr_name_result, query);
   }
+
+  if (query->req == nullptr) {
+    debug(dns, "query_name_by_addr: failed to submit reverse lookup request.\n");
+    delete query;
+  }
 }
 
 struct AddrNumberQuery {
@@ -93,6 +107,15 @@ struct AddrNumberQuery {
   int err;
   evutil_addrinfo *res;
 };
+
+void on_query_addr_by_name_finish(AddrNumberQuery *query);
+
+static void schedule_failed_addr_query(AddrNumberQuery *query, int err) {
+  query->err = err;
+  query->res = nullptr;
+  query->req = nullptr;
+  add_gametick_event(0, [=] { return on_query_addr_by_name_finish(query); });
+}
 
 // query finished, call the LPC callback.
 void on_query_addr_by_name_finish(AddrNumberQuery *query) {
@@ -183,7 +206,18 @@ int query_addr_by_name(const char *name, svalue_t *call_back) {
 
   add_ref(current_object, "query_addr_number: ");
 
+  if (g_dns_base == nullptr) {
+    debug(dns, "query_addr_by_name: dns resolver is unavailable, scheduling failure.\n");
+    schedule_failed_addr_query(query, EVUTIL_EAI_FAIL);
+    return query->key;
+  }
+
   query->req = evdns_getaddrinfo(g_dns_base, name, nullptr, &hints, on_getaddr_result, query);
+  if (query->req == nullptr) {
+    debug(dns, "query_addr_by_name: failed to submit lookup for %s.\n", name);
+    schedule_failed_addr_query(query, EVUTIL_EAI_FAIL);
+    return query->key;
+  }
 
   debug(dns, "DNS lookup scheduled: %" LPC_INT_FMTSTR_P ", %s\n", query->key, name);
 

@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #if HAVE_DIRENT_H
 #include <dirent.h>
@@ -46,14 +47,16 @@ enum astates { BUSY, DONE };
 
 struct Request {
   std::string path;
-  int flags;
-  int ret;
-  int handle;
+  int flags = 0;
+  int ret = 0;
+  int handle = 0;
   std::string data;
-  function_to_call_t *fun;
-  struct Request *next;
-  enum atypes type;
-  int status;
+  std::vector<std::string> entries;
+  size_t limit = 0;
+  function_to_call_t *fun = nullptr;
+  struct Request *next = nullptr;
+  enum atypes type = AREAD;
+  int status = DONE;
 };
 
 struct Work {
@@ -124,6 +127,13 @@ void do_stuff(void *(*func)(struct Request *), struct Request *data) {
 
 void *gzreadthread(struct Request *req) {
   gzFile file = gzopen(req->path.c_str(), "rb");
+  if (file == nullptr) {
+    req->ret = -1;
+    req->data.clear();
+    req->status = DONE;
+    return nullptr;
+  }
+
   req->ret = gzread(file, (void *)(req->data.data()), req->data.size());
   req->status = DONE;
   gzclose(file);
@@ -140,8 +150,28 @@ void *gzwritethread(struct Request *req) {
   int const fd =
       open(req->path.c_str(), req->flags & 1 ? O_CREAT | O_WRONLY | O_TRUNC : O_CREAT | O_WRONLY | O_APPEND,
            S_IRWXU | S_IRWXG);
+  if (fd == -1) {
+    req->ret = -1;
+    req->status = DONE;
+    return nullptr;
+  }
+
   gzFile file = gzdopen(fd, "wb");
+  if (file == nullptr) {
+    close(fd);
+    req->ret = -1;
+    req->status = DONE;
+    return nullptr;
+  }
+
   req->ret = gzwrite(file, (void *)(req->data.data()), req->data.size());
+  if (req->ret == 0 && !req->data.empty()) {
+    int errnum = Z_OK;
+    (void)gzerror(file, &errnum);
+    if (errnum != Z_OK) {
+      req->ret = -1;
+    }
+  }
   req->status = DONE;
   gzclose(file);
   return nullptr;
@@ -157,6 +187,11 @@ void *writethread(struct Request *req) {
   int const fd =
       open(req->path.c_str(), req->flags & 1 ? O_CREAT | O_WRONLY | O_TRUNC : O_CREAT | O_WRONLY | O_APPEND,
            S_IRWXU | S_IRWXG);
+  if (fd == -1) {
+    req->ret = -1;
+    req->status = DONE;
+    return nullptr;
+  }
 
   req->ret = write(fd, req->data.data(), req->data.size());
 
@@ -173,10 +208,22 @@ int aio_write(struct Request *req) {
 
 void *readthread(struct Request *req) {
   int const fd = open(req->path.c_str(), O_RDONLY);
-  auto size = read(fd, (void *)(req->data.data()), req->data.max_size());
+  if (fd == -1) {
+    req->ret = -1;
+    req->data.clear();
+    req->status = DONE;
+    return nullptr;
+  }
+
+  auto const size = read(fd, (void *)(req->data.data()), req->data.size());
   close(fd);
-  req->data.resize(size);
-  req->ret = size;
+  if (size < 0) {
+    req->ret = -1;
+    req->data.clear();
+  } else {
+    req->data.resize(size);
+    req->ret = size;
+  }
   req->status = DONE;
   return nullptr;
 }
@@ -245,10 +292,12 @@ void *getdirthread(struct Request *req) {
    * Count files
    */
   int i = 0;
+  req->entries.clear();
   for (auto *de = readdir(dirp); de; de = readdir(dirp)) {
     if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
-    req->data.resize(req->data.size() + sizeof(dirent *));
-    memcpy(&((dirent *)(req->data.data()))[i], de, sizeof(*de));
+    if (req->entries.size() < req->limit) {
+      req->entries.emplace_back(de->d_name);
+    }
     i++;
   }
 
@@ -291,7 +340,7 @@ int add_getdir(const char *fname, function_to_call_t *fun) {
   if (fname) {
     // printf("fname: %s\n", fname);
     auto *req = new Request();
-    req->data.resize(max_array_size);
+    req->limit = max_array_size;
     req->fun = fun;
     req->type = AGETDIR;
     req->path = fname;
@@ -349,20 +398,14 @@ void handle_read(struct Request *req) {
 
 #ifdef F_ASYNC_GETDIR
 void handle_getdir(struct Request *req) {
-  auto max_array_size = CONFIG_INT(__MAX_ARRAY_SIZE__);
-
-  int ret_size = req->ret;
-  if (ret_size > max_array_size) {
-    ret_size = max_array_size;
-  }
+  int ret_size = req->entries.size();
   array_t *ret = allocate_empty_array(ret_size);
   if (ret_size > 0) {
     for (int i = 0; i < ret_size; i++) {
-      auto de = ((struct dirent *)req->data.data())[i];
       svalue_t *vp = &(ret->item[i]);
       vp->type = T_STRING;
       vp->subtype = STRING_MALLOC;
-      vp->u.string = string_copy(de.d_name, "encode_stat");
+      vp->u.string = string_copy(req->entries[i].c_str(), "encode_stat");
     }
 
     qsort((void *)ret->item, ret_size, sizeof ret->item[0],

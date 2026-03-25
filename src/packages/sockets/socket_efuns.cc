@@ -178,12 +178,22 @@ static bool lpcaddr_to_sockaddr(const char *name, struct sockaddr *addr, ev_sock
   }
 
   char host[NI_MAXHOST], service[NI_MAXSERV];
+  auto const host_len = static_cast<size_t>(cp - name);
+  auto const service_len = strlen(cp + 1);
+
+  if (host_len == 0 || host_len >= sizeof(host) || service_len == 0 ||
+      service_len >= sizeof(service)) {
+    debug(sockets, "lpcaddr_to_sockaddr: address component too long.\n");
+    return false;
+  }
 
   memset(host, 0, sizeof(host));
   memset(service, 0, sizeof(service));
 
-  memcpy(host, name, cp - name);
-  strncpy(service, cp + 1, sizeof(service) - 1);
+  memcpy(host, name, host_len);
+  host[host_len] = '\0';
+  memcpy(service, cp + 1, service_len);
+  service[service_len] = '\0';
 
   struct addrinfo hints = {0}, *res;
 #ifdef IPV6

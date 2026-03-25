@@ -44,5 +44,6 @@ std::chrono::milliseconds gametick_to_time(int ticks);
 void update_load_av();
 void update_compile_av(int);
 char *query_load_av();
+void run_gametick_events_for_test();
 
 #endif

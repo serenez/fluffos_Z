@@ -335,14 +335,25 @@ mudlib_stats_t *set_master_author(const char *str) {
 
 static const char *author_for_file(const char *file) {
   svalue_t *ret;
-  static char buff[50];
+  static char *buff = nullptr;
+  static size_t buff_size = 0;
 
   copy_and_push_string(file);
   ret = safe_apply_master_ob(APPLY_AUTHOR_FILE, 1);
   if (ret == nullptr || ret == (svalue_t *)-1 || ret->type != T_STRING) {
     return nullptr;
   }
-  strcpy(buff, ret->u.string);
+  auto const len = strlen(ret->u.string) + 1;
+  if (len > buff_size) {
+    if (buff == nullptr) {
+      buff = reinterpret_cast<char *>(
+          DMALLOC(len, TAG_MUDLIB_STATS, "author_for_file"));
+    } else {
+      buff = RESIZE(buff, len, char, TAG_MUDLIB_STATS, "author_for_file");
+    }
+    buff_size = len;
+  }
+  memcpy(buff, ret->u.string, len);
   return buff;
 }
 
@@ -422,14 +433,25 @@ mudlib_stats_t *set_backbone_domain(const char *str) {
  */
 static const char *domain_for_file(const char *file) {
   svalue_t *ret;
-  static char buff[512];
+  static char *buff = nullptr;
+  static size_t buff_size = 0;
 
   share_and_push_string(file);
   ret = safe_apply_master_ob(APPLY_DOMAIN_FILE, 1);
   if (ret == nullptr || ret == (svalue_t *)-1 || ret->type != T_STRING) {
     return nullptr;
   }
-  strcpy(buff, ret->u.string);
+  auto const len = strlen(ret->u.string) + 1;
+  if (len > buff_size) {
+    if (buff == nullptr) {
+      buff = reinterpret_cast<char *>(
+          DMALLOC(len, TAG_MUDLIB_STATS, "domain_for_file"));
+    } else {
+      buff = RESIZE(buff, len, char, TAG_MUDLIB_STATS, "domain_for_file");
+    }
+    buff_size = len;
+  }
+  memcpy(buff, ret->u.string, len);
   return buff;
 }
 

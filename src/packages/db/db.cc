@@ -81,6 +81,19 @@ db_t *find_db_conn(int);
 static int create_db_conn();
 static void free_db_conn(db_t *);
 
+#ifdef PACKAGE_ASYNC
+extern pthread_mutex_t *db_mut;
+
+static pthread_mutex_t *ensure_db_mutex() {
+  if (!db_mut) {
+    db_mut = reinterpret_cast<pthread_mutex_t *>(
+        DMALLOC(sizeof(pthread_mutex_t), TAG_PERMANENT, "db mutex"));
+    pthread_mutex_init(db_mut, nullptr);
+  }
+  return db_mut;
+}
+#endif
+
 #ifdef USE_MSQL
 static int msql_connect(dbconn_t *, const char *, const char *, const char *, const char *);
 static int msql_close(dbconn_t *);
@@ -175,6 +188,12 @@ void f_db_close() {
 
   valid_database("close", &the_null_array);
 
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
+
   db = find_db_conn(sp->u.number);
   if (!db) {
     error("Attempt to close an invalid database handle\n");
@@ -212,6 +231,12 @@ void f_db_commit() {
   db_t *db;
 
   valid_database("commit", &the_null_array);
+
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
 
   db = find_db_conn(sp->u.number);
   if (!db) {
@@ -356,9 +381,6 @@ void f_db_connect() {
  * NOTE: the number of rows on INSERT, UPDATE, and DELETE statements will
  * be zero since there is no result set.
  */
-#ifdef PACKAGE_ASYNC
-extern pthread_mutex_t *db_mut;
-#endif
 #ifdef F_DB_EXEC
 void f_db_exec() {
   int ret = 0;
@@ -370,14 +392,17 @@ void f_db_exec() {
   info->item[0].u.string = string_copy(sp->u.string, "f_db_exec");
   valid_database("exec", info);
 
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
+
   db = find_db_conn((sp - 1)->u.number);
   if (!db) {
     error("Attempt to exec on an invalid database handle\n");
   }
 
-#ifdef PACKAGE_ASYNC
-  pthread_mutex_lock(db_mut);
-#endif
   if (db->type->cleanup) {
     db->type->cleanup(&(db->c));
   }
@@ -399,9 +424,6 @@ void f_db_exec() {
   } else {
     sp->u.number = ret;
   }
-#ifdef PACKAGE_ASYNC
-  pthread_mutex_unlock(db_mut);
-#endif
 }
 #endif
 
@@ -435,6 +457,12 @@ void f_db_fetch() {
   array_t *ret;
 
   valid_database("fetch", &the_null_array);
+
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
 
   db = find_db_conn((sp - 1)->u.number);
   if (!db) {
@@ -478,6 +506,12 @@ void f_db_rollback() {
 
   valid_database("rollback", &the_null_array);
 
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
+
   db = find_db_conn(sp->u.number);
   if (!db) {
     error("Attempt to rollback an invalid database handle\n");
@@ -508,6 +542,12 @@ void f_db_status() {
 
   outbuf_zero(&out);
 
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
+
   for (i = 0; i < db_conn_alloc; i++) {
     if (db_conn_list[i].flags & DB_FLAG_EMPTY) {
       continue;
@@ -525,6 +565,12 @@ void f_db_status() {
 
 void db_cleanup() {
   int i;
+
+#ifdef PACKAGE_ASYNC
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
+#endif
 
   for (i = 0; i < db_conn_alloc; i++) {
     if (!(db_conn_list[i].flags & DB_FLAG_EMPTY)) {
@@ -546,12 +592,9 @@ int create_db_conn() {
   int i;
 
 #ifdef PACKAGE_ASYNC
-  if (!db_mut) {
-    db_mut = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(db_mut, nullptr);
-  }
-  pthread_mutex_lock(db_mut);
-  DEFER { pthread_mutex_unlock(db_mut); };
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+  DEFER { pthread_mutex_unlock(db_mutex); };
 #endif
 
   /* allocate more slots if we need them */
@@ -1131,18 +1174,27 @@ static int Postgres_execute(dbconn_t *c, const char *s) {
 
 static int Postgres_connect(dbconn_t *c, const char *host, const char *database,
                             const char *username, const char *password) {
-  int buffsize;
-
+  auto *safe_host = host ? host : "";
+  auto *safe_database = database ? database : "";
+  auto *safe_username = username ? username : "";
+  auto *safe_password = password ? password : "";
   const char *connstr = "host = '%s' dbname = '%s' user = '%s' password = '%s'";
-  buffsize =
-      strlen(connstr) + strlen(host) + strlen(database) + strlen(username) + strlen(password);
-  char *conninfo = (char *)malloc(buffsize);
-  if (conninfo != NULL) {
-    sprintf(conninfo, connstr, host, database, username, password);
+  auto buffsize = snprintf(nullptr, 0, connstr, safe_host, safe_database, safe_username,
+                           safe_password);
+  if (buffsize < 0) {
+    return 0;
   }
 
+  char *conninfo =
+      reinterpret_cast<char *>(DMALLOC(buffsize + 1, TAG_DB, "Postgres_connect/conninfo"));
+  if (conninfo == nullptr) {
+    return 0;
+  }
+  snprintf(conninfo, buffsize + 1, connstr, safe_host, safe_database, safe_username,
+           safe_password);
+
   c->postgres.conn = PQconnectdb(conninfo);
-  free(conninfo);
+  FREE(conninfo);
 
   if ((PQstatus(c->postgres.conn) != CONNECTION_OK)) {
     return 0;
