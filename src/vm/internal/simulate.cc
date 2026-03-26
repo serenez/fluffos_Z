@@ -412,7 +412,22 @@ int filename_to_obname(const char *src, char *dest, int size) {
  * it.
  *
  */
+static object_t *load_object_internal(const char *lname, const char *obname_hint, int callcreate);
+
 object_t *load_object(const char *lname, int callcreate) {
+  return load_object_internal(lname, nullptr, callcreate);
+}
+
+static bool copy_obname_hint(const char *src, char *dest, size_t size) {
+  const auto len = strlen(src);
+  if (len >= size) {
+    return false;
+  }
+  memcpy(dest, src, len + 1);
+  return true;
+}
+
+static object_t *load_object_internal(const char *lname, const char *obname_hint, int callcreate) {
   ScopedTracer _tracer("LPC Load Object", EventCategory::VM_LOAD_OBJECT,
                        [=] { return json{lname}; });
 
@@ -440,7 +455,11 @@ object_t *load_object(const char *lname, int callcreate) {
   if (strrchr(pname, '#')) {
     error("Cannot load a clone.\n");
   }
-  if (!filename_to_obname(lname, name, sizeof name)) {
+  if (obname_hint) {
+    if (!copy_obname_hint(obname_hint, name, sizeof name)) {
+      error("Object name is too long (%s).\n", obname_hint);
+    }
+  } else if (!filename_to_obname(lname, name, sizeof name)) {
     error("Filenames with consecutive /'s in them aren't allowed (%s).\n", lname);
   }
   if (!filename_to_obname(pname, actualname, sizeof actualname)) {
@@ -457,15 +476,8 @@ object_t *load_object(const char *lname, int callcreate) {
   (void)strcpy(obname, name);
   (void)strcat(obname, ".c");
 
-  if (stat(real_name, &c_st) == -1 || S_ISDIR(c_st.st_mode)) {
-    save_command_giver(command_giver);
-    ob = load_virtual_object(actualname, 0);
-    restore_command_giver();
-    num_objects_this_thread--;
-    return ob;
-  }
   /*
-   * Check if it's a legal name.
+   * Check if it's a legal name before touching the filesystem.
    */
   if (!legal_path(real_name)) {
     debug_message("Illegal pathname: /%s\n", real_name);
@@ -474,12 +486,34 @@ object_t *load_object(const char *lname, int callcreate) {
 
   f = open(real_name, O_RDONLY);
 #ifdef _WIN32
-  // TODO: change everything to use fopen instead.
-  _setmode(f, _O_BINARY);
+  if (f != -1) {
+    // TODO: change everything to use fopen instead.
+    _setmode(f, _O_BINARY);
+  }
 #endif
   if (f == -1) {
+    if (stat(real_name, &c_st) == -1 || S_ISDIR(c_st.st_mode)) {
+      save_command_giver(command_giver);
+      ob = load_virtual_object(actualname, 0);
+      restore_command_giver();
+      num_objects_this_thread--;
+      return ob;
+    }
     debug_perror("compile_file", real_name);
     error("Could not read the file '/%s'.\n", real_name);
+  }
+  if (fstat(f, &c_st) == -1) {
+    close(f);
+    debug_perror("compile_file", real_name);
+    error("Could not stat the file '/%s'.\n", real_name);
+  }
+  if (S_ISDIR(c_st.st_mode)) {
+    close(f);
+    save_command_giver(command_giver);
+    ob = load_virtual_object(actualname, 0);
+    restore_command_giver();
+    num_objects_this_thread--;
+    return ob;
   }
   {
     ScopedTracer _compile_tracer("load_object.compile_file", EventCategory::VM_COMPILE_FILE,
@@ -539,7 +573,7 @@ object_t *load_object(const char *lname, int callcreate) {
       fatal("Inherited object is already loaded!");
 #endif
     } else {
-      inh_obj = load_object(inhbuf, 1);
+      inh_obj = load_object_internal(inhbuf, inhbuf, 1);
     }
     if (!inh_obj) error("Inherited file '/%s' does not exist!\n", inhbuf);
 
@@ -550,7 +584,7 @@ object_t *load_object(const char *lname, int callcreate) {
      * -Beek
      */
     if (!(ob = ObjectTable::instance().find(name))) {
-      ob = load_object(name, 1);
+      ob = load_object_internal(name, name, 1);
       /* sigh, loading the inherited file removed us */
       if (!ob) {
         num_objects_this_thread--;
@@ -1515,7 +1549,7 @@ object_t *find_object(const char *str) {
   if ((ob = ObjectTable::instance().find(tmpbuf))) {
     return ob;
   }
-  ob = load_object(tmpbuf, 1);
+  ob = load_object_internal(tmpbuf, tmpbuf, 1);
   if (!ob || (ob->flags & O_DESTRUCTED)) { /* *sigh* */
     return nullptr;
   }

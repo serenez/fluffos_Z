@@ -24,6 +24,7 @@
 #include <unistd.h>  // for read(), FIXME
 #include <vector>
 #include <algorithm>  // for std::sort
+#include <unordered_map>
 #include <unicode/ustring.h>
 #include <fmt/format.h>
 
@@ -112,6 +113,7 @@ static const char **inc_list;  // global include path from runtime config
 static int inc_list_size;
 static const char **inc_path;  // include path used for current compile
 static int inc_path_size;
+static std::unordered_map<std::string, std::string> include_open_cache;
 static int defines_need_freed = 0;
 static char *last_nl;
 static int nexpands = 0;
@@ -1117,6 +1119,7 @@ static int skip_to(const char *token, const char *atoken) {
 void init_include_path() {
   ScopedTracer _tracer("compile.init_include_path", EventCategory::VM_COMPILE_FILE,
                        [] { return json{{"file", current_file ? current_file : ""}}; });
+  include_open_cache.clear();
   push_malloced_string(add_slash(current_file));  // does master has an include path?
   svalue_t *ret = safe_apply_master_ob(APPLY_GET_INCLUDE_PATH, 1);
 
@@ -1185,6 +1188,7 @@ init_include_path_cleanup:  // oops, here something went wrong...
 }
 
 void deinit_include_path() {
+  include_open_cache.clear();
   if (inc_path != inc_list) {  // we got an include path from master
     for (int i = 0; i < inc_path_size; i++) {
       free_string(inc_path[i]);  // free it
@@ -1195,17 +1199,46 @@ void deinit_include_path() {
   }
 }
 
+static std::string build_include_cache_key(const char *name, int check_local) {
+  std::string key;
+  key.reserve((current_file ? strlen(current_file) : 0) + (name ? strlen(name) : 0) + 8);
+  key += check_local ? "L:" : "G:";
+  if (current_file) {
+    key += current_file;
+  }
+  key.push_back('\n');
+  if (name) {
+    key += name;
+  }
+  return key;
+}
+
 static int inc_open(char *buf, char *name, int check_local) {
   int i, f;
   char *p;
   const char *tmp;
   const std::string include_name(name ? name : "");
+  const auto cache_key = build_include_cache_key(name, check_local);
 
   ScopedTracer _tracer("compile.include_open", EventCategory::IO_FS,
                        [&include_name, check_local] {
                          return json{{"include", include_name},
                                      {"check_local", check_local != 0}};
                        });
+
+  if (auto it = include_open_cache.find(cache_key); it != include_open_cache.end()) {
+    f = open(it->second.c_str(), O_RDONLY);
+#ifdef _WIN32
+    if (f != -1) {
+      // TODO: change everything to use fopen instead.
+      _setmode(f, _O_BINARY);
+    }
+#endif
+    if (f != -1) {
+      return f;
+    }
+    include_open_cache.erase(it);
+  }
 
   if (check_local) {
     merge(name, buf);
@@ -1215,6 +1248,7 @@ static int inc_open(char *buf, char *name, int check_local) {
       // TODO: change everything to use fopen instead.
       _setmode(f, _O_BINARY);
 #endif
+      include_open_cache[cache_key] = tmp;
       return f;
     }
   }
@@ -1234,6 +1268,7 @@ static int inc_open(char *buf, char *name, int check_local) {
       // TODO: change everything to use fopen instead.
       _setmode(f, _O_BINARY);
 #endif
+      include_open_cache[cache_key] = tmp;
       return f;
     }
   }

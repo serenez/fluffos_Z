@@ -15,6 +15,39 @@ title: driver 提交记录
 
 ## 提交记录
 
+### 2026-03-26 15:08
+
+**提交号**
+
+`当前提交（提交号见 git log）`
+
+**标题**
+
+`perf(driver): 优化冷加载路径并缓存 include 解析`
+
+**提交信息**
+
+```text
+本次提交聚焦 driver 通用冷路径优化，不针对任何特定 mudlib 做分支特判，目标是在保持现有 LPC 语义和单线程边界不变的前提下，减少冷装载和编译阶段的重复开销。
+
+改动内容：
+- 调整 src/vm/internal/simulate.cc，引入 load_object_internal() 内部快路径，让 find_object()、inherit 触发的父对象装载、当前对象重载复用已经规范化过的对象名，减少重复执行 filename_to_obname() 的成本。
+- 调整 src/vm/internal/simulate.cc 的 load_object() 文件打开顺序，改为 open() 成功后使用 fstat() 获取文件状态，不再对正常存在的源码文件先 stat() 再 open()，降低冷装载阶段的重复文件系统调用。
+- 保留原有 virtual object 回退语义：只有 open() 失败且路径不存在或为目录时，才继续走 load_virtual_object()；不改变 LPC 对不存在对象和虚拟对象的既有行为。
+- 调整 src/compiler/internal/lex.cc，在单次编译生命周期内为 inc_open() 增加 include 路径解析缓存，缓存 key 绑定当前编译文件、include 名称和本地/全局查找模式，减少同一轮编译中重复打开相同头文件前的路径解析与权限校验开销。
+- 在 init_include_path() / deinit_include_path() 处清空 include 缓存，确保缓存不跨编译残留，不把 mudlib 的 include 语义做脏。
+
+边界说明：
+- 本次提交只修改 driver 源码和维护记录，不提交业务 mudlib 中的本地探针命令。
+- 不新增 LPC API，不改变 find_object()/load_object()/call_other(string, ...) 的对外语义。
+- 不引入多线程编译，也不改动现有 virtual object、master 校验和 create 调用顺序。
+
+验证记录：
+- 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\cmake.exe --build build_codex_review_fix --target lpc_tests --parallel 4，编译通过。
+- 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\ctest.exe --test-dir build_codex_review_fix --output-on-failure -j 1，结果 46/46 全通过。
+- 额外使用 lpcc 对 24xinduobao 下的 /cmds/wiz/driver_probe 做了多轮语法编译检查，确认本轮 driver 改动没有引入命令级语法问题；该探针文件位于被忽略的 mudlib 目录中，不纳入本次提交。
+```
+
 ### 2026-03-26 00:37
 
 **提交号**
