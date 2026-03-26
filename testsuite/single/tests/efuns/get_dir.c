@@ -9,4 +9,8 @@ void do_tests() {
 
   // ending slash or . doesn't matter
   ASSERT_EQ(get_dir("/u/"), get_dir("/u/."));
+
+  // long unmatched patterns should fail safely instead of truncating paths
+  ASSERT_EQ(({ }), get_dir("/" + repeat_string("a", 5000)));
+  ASSERT_EQ(0, get_dir("/" + repeat_string("a", 5000) + "/"));
 }

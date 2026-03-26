@@ -9,11 +9,10 @@ string base64encode(string source_str)
 {
     string *b ;
     string r = "";
-    string p = "";
     int i;
     int n;
     int n1, n2, n3, n4;
-    int rlen, slen, plen;
+    int slen, plen;
     buffer source = string_encode(source_str, "UTF-8");
 
     if( nullp( source_str ) || !sizeof( source_str ) )
@@ -82,7 +81,7 @@ string base64decode(string source)
                 f += "A";
                 plen++;
                 continue;
-            } else if(source[i] == 32 || source[i] == 10 || source[i] == 9 || source[i] = 13) {
+            } else if(source[i] == 32 || source[i] == 10 || source[i] == 9 || source[i] == 13) {
                 // We found whitespace, skip it
                 continue;
             } else {

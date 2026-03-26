@@ -30,6 +30,8 @@
 #include "packages/async/async.h"
 #endif
 
+#include <string>
+
 #if (defined(DEBUGMALLOC) && defined(DEBUGMALLOC_EXTENSIONS))
 
 void mark_svalue(struct svalue_t *);
@@ -679,10 +681,9 @@ void check_all_blocks(int flag) {
 
     auto *dfm = CONFIG_STR(__DEFAULT_FAIL_MESSAGE__);
     if (dfm != nullptr && strlen(dfm) > 0) {
-      char buf[8192];
-      strcpy(buf, dfm);
-      strcat(buf, "\n");
-      const char *target = findstring(buf);
+      std::string fail_message(dfm);
+      fail_message.push_back('\n');
+      const char *target = findstring(fail_message.c_str());
       if (target) {
         EXTRA_REF(BLOCK(target))++;
       }

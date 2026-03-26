@@ -10,7 +10,7 @@
 
 varargs string number_string( mixed number, int add_commas )
 {
-    string int_part = "", decimal_part = "", *parts, part ;
+    string int_part = "", decimal_part = "" ;
     string work ;
 
     if(nullp(number) || ( typeof(number) != INT && typeof(number) != FLOAT ) )
@@ -20,7 +20,7 @@ varargs string number_string( mixed number, int add_commas )
 
     work = number + "" ;
 
-    if( !nullp(add_commas) || add_commas == 1 )
+    if( add_commas == 1 )
     {
         int decimal_index = strsrch(work, ".") ;
 

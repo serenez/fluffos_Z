@@ -64,10 +64,26 @@ int main(int argc, char** argv) {
     auto json_file = program.get("json_file");
     if (json_file == "-") {
       std::cout << result;
+      if (!std::cout) {
+        std::cerr << "Error: failed to write json output to stdout" << std::endl;
+        return 1;
+      }
     } else {
       std::ofstream ofs(json_file, std::ios::binary);
+      if (!ofs.is_open()) {
+        std::cerr << "Error: cannot open output file " << json_file << std::endl;
+        return 1;
+      }
       ofs << result;
+      if (!ofs) {
+        std::cerr << "Error: failed to write output file " << json_file << std::endl;
+        return 1;
+      }
       ofs.close();
+      if (!ofs) {
+        std::cerr << "Error: failed to close output file " << json_file << std::endl;
+        return 1;
+      }
     }
   } catch (const std::exception& err) {
     std::cerr << err.what() << std::endl;

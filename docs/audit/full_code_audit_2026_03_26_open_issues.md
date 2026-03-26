@@ -2,8 +2,8 @@
 
 - 仓库: `fluffos_Z`
 - 日期: `2026-03-26`
-- 目标: 把当前代码里仍然存在、且能静态确认的问题集中记录到一个新文档里，便于后续逐条修复
-- 结论口径: 只记录“当前仍存在”的问题；上一轮已经修复的历史问题不重复记入本表
+- 目标: 记录 `2026-03-26` 这轮初始全量审查快照，并在文档顶部回写后续修复状态，便于下一轮继续接手
+- 结论口径: 下方“问题清单”保留初始审查快照；已在当前工作区修复的问题，会在“修复回写”里标注
 
 ## 审查范围
 
@@ -19,13 +19,42 @@
 - 关键模块人工审读: 编译器、VM、文件系统、日志、工具链、ed、testsuite 标准库
 - 运行验证:
   - 直接运行 `ctest` 会因为 `C:\msys64\mingw64\bin` 不在 `PATH` 中而全部报 `0xc0000135`
-  - 补上 `PATH` 后，`build_codex_review_fix` 下 `46/46` 测试全部通过
+  - 补上 `PATH` 后，当前 `build_codex_review_fix` 下 `56/56` 测试全部通过
 
 ## 发现摘要
 
-- 高: 8
-- 中: 7
-- 低: 2
+- 初始快照: 高 `8` / 中 `7` / 低 `2`
+- 当前剩余 OPEN: 高 `0` / 中 `0` / 低 `0`
+
+## 修复回写
+
+- 已在当前工作区修复: `AUD-20260326-001` 至 `017` 全部已落地
+- 对应落地范围:
+  - `src/packages/core/ed.cc` / `ed.h`: 改为动态文件名存储，修复 `getfn()` 长文件名、复用当前文件名和启动阶段路径状态错乱
+  - `src/tools/preprocessor.hpp`: 移除固定缓冲错误拼接，去掉调试残留输出
+  - `src/tools/build_applies.cc`: 为全部 `fopen()` 失败路径补错误处理
+  - `src/compiler/internal/lex.cc`: 用动态字符串重写 include 路径拼装链
+  - `src/vm/internal/trace.cc`: 修复 `debug_message()` 格式串调用
+  - `src/base/internal/log.cc`: 为日志不可用时的待刷队列加消息数和总字节上限，避免长时间无界增长
+  - `src/packages/core/file.cc`: `get_dir()` 改为动态路径拆分/拼装，并保留 `stat()` 失败时清零元数据的安全分支
+  - `src/main_o2json.cc` / `src/main_json2o.cc` / `src/main_generate_keywords.cc` / `src/tools/make_options_defs.cc`: 为输出文件打开、写入、关闭失败补非零退出和错误信息
+  - `src/tools/make_func.y`: 用动态字符串重写 spec 生成文本，顺手清理同文件相邻固定缓冲热点
+  - `src/packages/develop/checkmemory.cc`: `default fail message` 改为动态字符串承接
+  - `testsuite/std/base64.c` / `testsuite/std/number_string.c`: 修复标准库逻辑问题并清理未使用局部变量
+- 已补定向回归:
+  - `DriverTest.TestEdTracksLongFilenamesWithoutTruncation`
+  - `DriverTest.TestIncludeResolutionHandlesLongCurrentFilenameSafely`
+  - `DriverTest.TestBuildAppliesReportsMissingInputFileGracefully`
+  - `DriverTest.TestMakeOptionsDefsHandlesLongMissingIncludeGracefully`
+  - `DriverTest.TestMakeOptionsDefsHandlesLongUnknownDirectiveGracefully`
+  - `DriverTest.TestO2JsonReportsOutputOpenFailure`
+  - `DriverTest.TestJson2OReportsOutputOpenFailure`
+  - `DriverTest.TestGenerateKeywordsReportsOutputOpenFailure`
+  - `DriverTest.TestMakeOptionsDefsReportsOutputOpenFailure`
+  - `DriverTest.TestMakeFuncHandlesLongAliasWithoutOverflow`
+  - `testsuite/single/tests/efuns/get_dir.c`: 补长路径模式与目录路径安全回归
+  - `testsuite/single/tests/std/number_string.c`: 补 `add_commas == 0` 语义回归
+  - `testsuite/single/tests/std/base64.c`: 补非法输入回归
 
 ## 问题清单
 
@@ -190,5 +219,5 @@
 ## 本轮验证备注
 
 - 直接执行 `ctest` 时，测试二进制因缺少 `libgtest.dll` / `libgtest_main.dll` 而统一返回 `0xc0000135`
-- 手动把 `C:\msys64\mingw64\bin` 加入 `PATH` 后，`build_codex_review_fix` 下 `46/46` 测试全部通过
+- 手动把 `C:\msys64\mingw64\bin` 加入 `PATH` 后，`build_codex_review_fix` 下 `56/56` 测试全部通过
 - 因此本表记录的是“静态确认的当前问题”，不是“当前已有回归失败的功能清单”

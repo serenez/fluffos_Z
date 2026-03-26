@@ -260,11 +260,11 @@ static void add_define(const char * /*name*/, int /*nargs*/, const char * /*exps
 static void add_predefine(const char * /*name*/, int /*nargs*/, const char * /*exps*/);
 static int expand_define(void);
 static void add_input(const char * /*p*/);
-static void merge(char *name, char *dest);
+static std::string merge(const char * /*name*/);
 static void add_quoted_predefine(const char * /*def*/, const char * /*val*/);
 static void lexerror(const char * /*s*/);
 static int skip_to(const char * /*token*/, const char * /*atoken*/);
-static int inc_open(char * /*buf*/, char * /*name*/, int /*check_local*/);
+static int inc_open(std::string * /*resolved_path*/, const char * /*name*/, int /*check_local*/);
 static void include_error(const char * /*msg*/, int /*global*/);
 static void handle_include(char * /*name*/, int /*global*/);
 static int get_terminator(char * /*terminator*/);
@@ -990,46 +990,39 @@ int lookup_predef(const char *name) {
   return -1;
 }
 
-static void merge(char *name, char *dest) {
-  char *from;
+static std::string merge(const char *name) {
+  std::string dest = current_file ? current_file : "";
+  const char *from = name ? name : "";
 
-  strcpy(dest, current_file);
-  if ((from = strrchr(dest, '/'))) { /* strip filename */
-    *from = 0;
-  } else
-  /* current_file was the file_name */
-  /* include from the root directory */
-  {
-    *dest = 0;
+  if (auto pos = dest.rfind('/'); pos != std::string::npos) {
+    dest.resize(pos);
+  } else {
+    dest.clear();
   }
 
-  from = name;
   while (*from == '/') {
     from++;
-    *dest = 0; /* absolute path */
+    dest.clear(); /* absolute path */
   }
 
   while (*from) {
     if (!strncmp(from, "../", 3)) {
-      char *tmp;
-
-      if (*dest == 0) { /* including from above mudlib is NOT allowed */
+      if (dest.empty()) { /* including from above mudlib is NOT allowed */
         break;
       }
-      tmp = strrchr(dest, '/');
-      if (tmp == nullptr) { /* 1 component in dest */
-        *dest = 0;
+      if (auto pos = dest.rfind('/'); pos != std::string::npos) {
+        dest.resize(pos);
       } else {
-        *tmp = 0;
+        dest.clear();
       }
       from += 3; /* skip "../" */
     } else if (!strncmp(from, "./", 2)) {
       from += 2;
     } else { /* append first component to dest */
-      char *q;
+      const char *q;
 
-      if (*dest) {
-        strcat(dest, "/"); /* only if dest is not empty !! */
+      if (!dest.empty()) {
+        dest.push_back('/');
       }
       q = strchr(from, '/');
 
@@ -1037,17 +1030,19 @@ static void merge(char *name, char *dest) {
         while (*from == '/') { /* find the start */
           from++;
         }
-        strncat(dest, from, q - from);
+        dest.append(from, q - from);
         for (from = q + 1; *from == '/'; from++) {
           ;
         }
       } else {
         /* this was the last component */
-        strcat(dest, from);
+        dest += from;
         break;
       }
     }
   }
+
+  return dest;
 }
 
 static void lexerror(const char *s) {
@@ -1213,12 +1208,14 @@ static std::string build_include_cache_key(const char *name, int check_local) {
   return key;
 }
 
-static int inc_open(char *buf, char *name, int check_local) {
+static int inc_open(std::string *resolved_path, const char *name, int check_local) {
   int i, f;
   char *p;
   const char *tmp;
   const std::string include_name(name ? name : "");
   const auto cache_key = build_include_cache_key(name, check_local);
+
+  resolved_path->clear();
 
   ScopedTracer _tracer("compile.include_open", EventCategory::IO_FS,
                        [&include_name, check_local] {
@@ -1235,19 +1232,21 @@ static int inc_open(char *buf, char *name, int check_local) {
     }
 #endif
     if (f != -1) {
+      *resolved_path = it->second;
       return f;
     }
     include_open_cache.erase(it);
   }
 
   if (check_local) {
-    merge(name, buf);
-    tmp = check_valid_path(buf, master_ob, "include", 0);
+    auto local_path = merge(name);
+    tmp = check_valid_path(local_path.c_str(), master_ob, "include", 0);
     if (tmp && (f = open(tmp, O_RDONLY)) != -1) {
 #ifdef _WIN32
       // TODO: change everything to use fopen instead.
       _setmode(f, _O_BINARY);
 #endif
+      *resolved_path = tmp;
       include_open_cache[cache_key] = tmp;
       return f;
     }
@@ -1261,13 +1260,16 @@ static int inc_open(char *buf, char *name, int check_local) {
     }
   }
   for (i = 0; i < inc_path_size; i++) {
-    sprintf(buf, "%s/%s", inc_path[i], name);
-    tmp = check_valid_path(buf, master_ob, "include", 0);
+    std::string candidate = inc_path[i];
+    candidate.push_back('/');
+    candidate += name;
+    tmp = check_valid_path(candidate.c_str(), master_ob, "include", 0);
     if (tmp && (f = open(tmp, O_RDONLY)) != -1) {
 #ifdef _WIN32
       // TODO: change everything to use fopen instead.
       _setmode(f, _O_BINARY);
 #endif
+      *resolved_path = tmp;
       include_open_cache[cache_key] = tmp;
       return f;
     }
@@ -1293,9 +1295,9 @@ static void include_error(const char *msg, int global) {
 
 static void handle_include(char *name, int global) {
   char *p;
-  static char buf[MAXLINE];
   incstate_t *is;
   int delim, f;
+  std::string resolved_path;
 
   symbol_record(OP_SYMBOL_INC, current_file, current_line, name);
 
@@ -1326,15 +1328,10 @@ static void handle_include(char *name, int global) {
     include_error("Missing trailing \" or > in #include", global);
     return;
   }
-  if (strlen(name) > sizeof(buf) - 100) {
-    pop_stack();
-    include_error("Include name too long.", global);
-    return;
-  }
   *p = 0;
   if (++incnum == MAX_INCLUDE_DEPTH) {
     include_error("Maximum include depth exceeded.", global);
-  } else if ((f = inc_open(buf, name, delim == '"')) != -1) {
+  } else if ((f = inc_open(&resolved_path, name, delim == '"')) != -1) {
     is = reinterpret_cast<incstate_t *>(
         DMALLOC(sizeof(incstate_t), TAG_COMPILER, "handle_include: 1"));
     is->stream = current_stream.release();
@@ -1350,13 +1347,14 @@ static void handle_include(char *name, int global) {
     current_line_base += current_line;
     current_line_saved = 0;
     current_line = 1;
-    current_file = make_shared_string(buf);
-    current_file_id = add_program_file(buf, 0);
+    current_file = make_shared_string(resolved_path.c_str());
+    current_file_id = add_program_file(resolved_path.c_str(), 0);
     current_stream = std::make_unique<FileLexStream>(f);
     refill_buffer();
   } else {
-    sprintf(buf, "Cannot #include %s", name);
-    include_error(buf, global);
+    std::string error_message = "Cannot #include ";
+    error_message += name;
+    include_error(error_message.c_str(), global);
   }
   pop_stack();
 }
@@ -3471,12 +3469,12 @@ void end_new_file() {
 }
 
 static void add_quoted_predefine(const char *def, const char *val) {
-  char save_buf[MAXLINE];
-
-  strcpy(save_buf, "\"");
-  strcat(save_buf, val);
-  strcat(save_buf, "\"");
-  add_predefine(def, -1, save_buf);
+  std::string quoted = "\"";
+  if (val != nullptr) {
+    quoted += val;
+  }
+  quoted += "\"";
+  add_predefine(def, -1, quoted.c_str());
 }
 
 void add_predefines() {

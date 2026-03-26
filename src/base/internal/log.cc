@@ -28,8 +28,11 @@ const debug_t levels[] = {E(call_out),      E(d_flag),     E(connections), E(map
 const int sizeof_levels = (sizeof(levels) / sizeof(levels[0]));
 
 namespace {
+constexpr size_t kMaxPendingDebugMessages = 256;
+constexpr size_t kMaxPendingDebugBytes = 256 * 1024;
 FILE *debug_message_fp = nullptr;
 std::deque<std::string> pending_messages;
+size_t pending_message_bytes = 0;
 bool stdout_buffering_configured = false;
 thread_local std::vector<char> format_buffer(2048);
 thread_local std::wstring wide_stdout_buffer;
@@ -114,6 +117,13 @@ void write_debug_output(std::string_view message) {
     }
   } else {
     pending_messages.emplace_back(message);
+    pending_message_bytes += message.size();
+    while (!pending_messages.empty() &&
+           (pending_messages.size() > kMaxPendingDebugMessages ||
+            pending_message_bytes > kMaxPendingDebugBytes)) {
+      pending_message_bytes -= pending_messages.front().size();
+      pending_messages.pop_front();
+    }
   }
 }
 }  // namespace
@@ -150,7 +160,7 @@ void reset_debug_message_fp() {
         fwrite(msg.data(), 1, msg.size(), debug_message_fp);
       }
       pending_messages.clear();
-      pending_messages.shrink_to_fit();
+      pending_message_bytes = 0;
     }
   }
 }

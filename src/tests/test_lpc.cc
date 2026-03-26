@@ -2,8 +2,10 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
+#include <array>
 #include <cstdio>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -20,6 +22,7 @@
 #include "compiler/internal/compiler.h"
 #include "compiler/internal/scratchpad.h"
 #include "interactive.h"
+#include "packages/core/ed.h"
 #include "packages/core/dns.h"
 #include "packages/core/heartbeat.h"
 #include "packages/gateway/gateway.h"
@@ -44,8 +47,11 @@ void f_compress_file();
 #ifdef F_UNCOMPRESS_FILE
 void f_uncompress_file();
 #endif
+void f_in_edit();
 
 namespace {
+
+std::filesystem::path g_test_binary_dir;
 
 std::streamoff compile_log_size() {
   std::ifstream file("log/compile", std::ios::binary | std::ios::ate);
@@ -187,6 +193,128 @@ void write_test_file(const std::string &path, const std::string &content) {
   file.close();
 }
 
+struct CommandResult {
+  int exit_code = -1;
+  std::string output;
+};
+
+std::filesystem::path src_binary_path(const std::string &name) {
+  return g_test_binary_dir.parent_path() / name;
+}
+
+std::filesystem::path tool_binary_path(const std::string &name) {
+  return src_binary_path("tools") / name;
+}
+
+struct CurrentWorkingDirectoryGuard {
+  explicit CurrentWorkingDirectoryGuard(const std::filesystem::path &next)
+      : active(!next.empty()), previous(active ? std::filesystem::current_path() : std::filesystem::path()) {
+    if (active) {
+      std::filesystem::current_path(next);
+    }
+  }
+
+  ~CurrentWorkingDirectoryGuard() {
+    if (active) {
+      std::filesystem::current_path(previous);
+    }
+  }
+
+  bool active = false;
+  std::filesystem::path previous;
+};
+
+struct ScopedTestDirectory {
+  explicit ScopedTestDirectory(const std::string &prefix) {
+    path = std::filesystem::current_path() /
+           (prefix + "_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(path);
+  }
+
+  ~ScopedTestDirectory() {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+
+  std::filesystem::path path;
+};
+
+CommandResult run_command_capture(const std::filesystem::path &executable,
+                                 const std::vector<std::string> &args = {},
+                                 const std::filesystem::path &working_directory = {}) {
+  CommandResult result;
+  std::string command = "\"" + executable.string() + "\"";
+  for (const auto &arg : args) {
+    command += " " + arg;
+  }
+  CurrentWorkingDirectoryGuard working_directory_guard(working_directory);
+#ifdef _WIN32
+  const auto capture_file = g_test_binary_dir / "tool_command_capture.txt";
+  std::remove(capture_file.string().c_str());
+  result.exit_code =
+      std::system(("cmd /c \"" + command + " > \"" + capture_file.string() + "\" 2>&1\"").c_str());
+  std::ifstream file(capture_file, std::ios::binary);
+  if (file.is_open()) {
+    std::ostringstream content;
+    content << file.rdbuf();
+    result.output = content.str();
+  }
+  std::remove(capture_file.string().c_str());
+#else
+  FILE *pipe = popen((command + " 2>&1").c_str(), "r");
+  if (pipe == nullptr) {
+    return result;
+  }
+
+  std::array<char, 256> buffer{};
+  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+    result.output += buffer.data();
+  }
+  result.exit_code = pclose(pipe);
+#endif
+  return result;
+}
+
+std::string take_interactive_output(interactive_t *ip) {
+  if (ip == nullptr || ip->ev_buffer == nullptr) {
+    return {};
+  }
+
+  auto *output = bufferevent_get_output(ip->ev_buffer);
+  auto length = evbuffer_get_length(output);
+  std::string result(length, '\0');
+  if (length > 0) {
+    evbuffer_remove(output, result.data(), length);
+  }
+  return result;
+}
+
+void start_ed_session(object_t *ob, const char *filename) {
+  save_command_giver(ob);
+  set_eval(max_eval_cost);
+  ed_start(filename, nullptr, nullptr, 0, nullptr, 20);
+  restore_command_giver();
+}
+
+void run_ed_command(object_t *ob, std::string command) {
+  save_command_giver(ob);
+  set_eval(max_eval_cost);
+  ed_cmd(command.data());
+  restore_command_giver();
+}
+
+std::string query_in_edit_path(object_t *ob) {
+  push_object(ob);
+  f_in_edit();
+
+  std::string result;
+  if (sp->type == T_STRING && sp->u.string != nullptr) {
+    result = sp->u.string;
+  }
+  pop_stack();
+  return result;
+}
+
 LPC_INT call_gateway_config_number(const char *key) {
   push_constant_string(key);
   st_num_arg = 1;
@@ -227,6 +355,7 @@ struct ConfigIntGuard {
 class DriverTest : public ::testing::Test {
  public:
   static void SetUpTestSuite() {
+    g_test_binary_dir = std::filesystem::current_path();
     chdir(TESTSUITE_DIR);
     // Initialize libevent, This should be done before executing LPC.
     init_main("etc/config.test", false);
@@ -384,6 +513,178 @@ TEST_F(DriverTest, TestGetLineNumberHandlesLongFilename) {
   ASSERT_NE(location.find(':'), std::string::npos);
 
   deallocate_program(prog);
+}
+
+TEST_F(DriverTest, TestEdTracksLongFilenamesWithoutTruncation) {
+  object_t *ob = nullptr;
+  interactive_t *ip = nullptr;
+  event_base *base = nullptr;
+
+  current_object = master_ob;
+  error_context_t econ{};
+  save_context(&econ);
+  try {
+    ob = load_object("/clone/user", 1);
+  } catch (...) {
+    restore_context(&econ);
+  }
+  pop_context(&econ);
+
+  ASSERT_NE(ob, nullptr);
+  ob->flags |= O_IS_WIZARD;
+  ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  base = event_base_new();
+  ASSERT_NE(base, nullptr);
+  ip->ev_buffer = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+  ASSERT_NE(ip->ev_buffer, nullptr);
+  ob->interactive = ip;
+  ip->ob = ob;
+
+  const std::string startup_path = "/" + std::string(320, 's');
+  const std::string command_name(360, 'c');
+  const std::string command_path = "/" + command_name;
+
+  start_ed_session(ob, startup_path.c_str());
+  EXPECT_EQ(startup_path, query_in_edit_path(ob));
+  take_interactive_output(ip);
+
+  run_ed_command(ob, "f " + command_path);
+  take_interactive_output(ip);
+  EXPECT_EQ(command_path, query_in_edit_path(ob));
+
+  run_ed_command(ob, "Q");
+  ob->interactive = nullptr;
+  bufferevent_free(ip->ev_buffer);
+  ip->ev_buffer = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  event_base_free(base);
+  destruct_object(ob);
+  free_object(&ob, "DriverTest::TestEdTracksLongFilenamesWithoutTruncation");
+}
+
+TEST_F(DriverTest, TestIncludeResolutionHandlesLongCurrentFilenameSafely) {
+  auto compile_log_offset = compile_log_size();
+  current_object = master_ob;
+
+  const std::string long_file_name(4600, 'i');
+  std::istringstream source("#include \"missing_header.h\"\n");
+  auto stream = std::make_unique<IStreamLexStream>(source);
+  auto *prog = compile_file(std::move(stream), long_file_name.c_str());
+
+  ASSERT_EQ(prog, nullptr);
+  auto compile_log = compile_log_delta(compile_log_offset);
+  ASSERT_NE(compile_log.find("Cannot #include missing_header.h"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestBuildAppliesReportsMissingInputFileGracefully) {
+  auto result = run_command_capture(tool_binary_path("build_applies.exe"), {"missing_source_dir"});
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("failed to open"), std::string::npos);
+  EXPECT_NE(result.output.find("vm/internal/applies"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestMakeOptionsDefsHandlesLongMissingIncludeGracefully) {
+  const std::string input_file = "preprocessor_long_include_test.h";
+  const std::string include_name(1800, 'h');
+
+  std::remove("options.autogen.h");
+  std::remove(input_file.c_str());
+  write_test_file(input_file, "#include \"" + include_name + "\"\n");
+
+  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+                                    {"-I.", "preprocessor_long_include_test.h"});
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("Cannot #include "), std::string::npos);
+
+  std::remove("options.autogen.h");
+  std::remove(input_file.c_str());
+}
+
+TEST_F(DriverTest, TestMakeOptionsDefsHandlesLongUnknownDirectiveGracefully) {
+  const std::string input_file = "preprocessor_unknown_directive_test.h";
+  const std::string directive = "#" + std::string(1800, 'x') + "\n";
+
+  std::remove("options.autogen.h");
+  std::remove(input_file.c_str());
+  write_test_file(input_file, directive);
+
+  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+                                    {"-I.", "preprocessor_unknown_directive_test.h"});
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("Unrecognised # directive"), std::string::npos);
+
+  std::remove("options.autogen.h");
+  std::remove(input_file.c_str());
+}
+
+TEST_F(DriverTest, TestO2JsonReportsOutputOpenFailure) {
+  ScopedTestDirectory temp_dir("o2json_output_failure");
+  const auto input_file = (std::filesystem::current_path() / "test.o").generic_string();
+  auto result = run_command_capture(src_binary_path("o2json.exe"),
+                                    {input_file, "missing_dir/out.json"}, temp_dir.path);
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("cannot open output file"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestJson2OReportsOutputOpenFailure) {
+  ScopedTestDirectory temp_dir("json2o_output_failure");
+  const auto input_file = temp_dir.path / "input.json";
+  write_test_file(input_file.string(),
+                  "{\n"
+                  "  \"program_name\": \"/test\",\n"
+                  "  \"variables\": []\n"
+                  "}\n");
+  auto result = run_command_capture(src_binary_path("json2o.exe"),
+                                    {input_file.filename().generic_string(), "missing_dir/out.o"},
+                                    temp_dir.path);
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("cannot open output file"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestGenerateKeywordsReportsOutputOpenFailure) {
+  ScopedTestDirectory temp_dir("generate_keywords_output_failure");
+  ASSERT_TRUE(std::filesystem::create_directory(temp_dir.path / "keywords.json"));
+
+  auto result = run_command_capture(src_binary_path("generate_keywords.exe"), {}, temp_dir.path);
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("cannot open output file keywords.json"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestMakeOptionsDefsReportsOutputOpenFailure) {
+  ScopedTestDirectory temp_dir("make_options_defs_output_failure");
+  write_test_file((temp_dir.path / "options_input.h").string(), "#define LOCAL_OPTION 1\n");
+  ASSERT_TRUE(std::filesystem::create_directory(temp_dir.path / "options.autogen.h"));
+
+  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+                                    {"-I.", "options_input.h"}, temp_dir.path);
+
+  EXPECT_NE(0, result.exit_code);
+  EXPECT_NE(result.output.find("cannot open output file options.autogen.h"), std::string::npos);
+}
+
+TEST_F(DriverTest, TestMakeFuncHandlesLongAliasWithoutOverflow) {
+  ScopedTestDirectory temp_dir("make_func_long_alias");
+  const std::string function_name(90, 'f');
+  const std::string alias(90, 'a');
+  const std::string long_arg_types = "int|string|object|mapping|mixed|float|function|buffer";
+  const std::string spec = "int " + function_name + " " + alias + "(" + long_arg_types + "," +
+                           long_arg_types + "," + long_arg_types + "," + long_arg_types + ");\n";
+  write_test_file((temp_dir.path / "long_alias.spec").string(), spec);
+
+  auto result = run_command_capture(tool_binary_path("make_func.exe"), {"long_alias.spec"}, temp_dir.path);
+
+  EXPECT_EQ(0, result.exit_code);
+  EXPECT_TRUE(std::filesystem::exists(temp_dir.path / "efuns.autogen.cc"));
+  EXPECT_TRUE(std::filesystem::exists(temp_dir.path / "efuns.autogen.h"));
 }
 
 #ifdef F_COMPRESS_FILE

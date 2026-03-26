@@ -43,7 +43,7 @@ void dump_trace_line(const char *fname, const char *pname, const char *const obn
   p = strput(p, end, "() at ");
   p = strput(p, end, where);
   p = strput(p, end, "\n");
-  debug_message(line);
+  debug_message("%s", line);
 }
 
 }  // namespace

@@ -57,10 +57,26 @@ int main(int argc, char** argv) {
     auto o_file = program.get("o_file");
     if (o_file == "-") {
       std::cout << result;
+      if (!std::cout) {
+        std::cerr << "Error: failed to write o file output to stdout" << std::endl;
+        return 1;
+      }
     } else {
       std::ofstream ofs(o_file, std::ios::binary);
+      if (!ofs.is_open()) {
+        std::cerr << "Error: cannot open output file " << o_file << std::endl;
+        return 1;
+      }
       ofs << result;
+      if (!ofs) {
+        std::cerr << "Error: failed to write output file " << o_file << std::endl;
+        return 1;
+      }
       ofs.close();
+      if (!ofs) {
+        std::cerr << "Error: failed to close output file " << o_file << std::endl;
+        return 1;
+      }
     }
   } catch (const std::exception& err) {
     std::cerr << "Error: " << err.what() << std::endl;

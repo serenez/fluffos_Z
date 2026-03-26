@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cctype>
+#include <cstring>
+#include <sstream>
+#include <string>
 
 #define YYDEBUG 1
 #define YYERROR_VERBOSE 1
@@ -45,6 +48,35 @@ extern int arg_types[1000], last_current_type;
 
 const char *ctype(int);
 std::string etype(int);
+
+char *copy_owned_string(const std::string &value) {
+  auto *copy = static_cast<char *>(malloc(value.size() + 1));
+  strcpy(copy, value.c_str());
+  return copy;
+}
+
+std::string uppercase_ascii(std::string value) {
+  for (auto &ch : value) {
+    if (islower(static_cast<unsigned char>(ch))) {
+      ch = toupper(static_cast<unsigned char>(ch));
+    }
+  }
+  return value;
+}
+
+std::string make_opcode_name(const char *name) {
+  return uppercase_ascii("F_" + std::string(name));
+}
+
+std::string build_predef_entry(const char *name, const std::string &opcode_name, int min_args,
+                               int max_args, const char *return_type, int arg_index,
+                               const char *default_value) {
+  std::ostringstream output;
+  output << "{\"" << name << "\"," << opcode_name << ",0,0," << min_args << "," << max_args
+         << "," << return_type << "," << etype(0) << "," << etype(1) << "," << etype(2)
+         << "," << etype(3) << "," << arg_index << "," << default_value << "},\n";
+  return output.str();
+}
 
 int num_buff = 0;
 int op_code, efun_code;
@@ -110,17 +142,8 @@ operator: OPERATOR op_list ';';
 op_list: op | op_list ',' op;
 
 op: ID {
-  char f_name[500], c;
-  int i = 2;
-  sprintf(f_name, "F_%s", $1);
-  while ((c = f_name[i])) {
-    if (islower(c))
-      f_name[i++] = toupper(c);
-    else
-      i++;
-  }
-  oper_codes[op_code] = (char *)malloc(i + 1);
-  strcpy(oper_codes[op_code], f_name);
+  auto f_name = make_opcode_name($1);
+  oper_codes[op_code] = copy_owned_string(f_name);
   free((void *)$1);
 
   op_code++;
@@ -141,30 +164,17 @@ optional_default : /* empty */ { $$ = "DEFAULT_NONE"; }
 };
 
 func: type ID optional_ID '(' arg_list optional_default ')' ';' {
-  char buff[500];
-  char f_name[500];
-  int i, len;
+  int i;
+  std::string f_name;
   if (min_arg == -1) min_arg = $5;
   if (min_arg > 127) yyerror("min_arg > 127\n");
   if ($3[0] == '\0') {
-    if (strlen($2) + 1 + 2 > sizeof f_name) yyerror("A local buffer was too small!(1)\n");
-    sprintf(f_name, "F_%s", $2);
-    len = strlen(f_name);
-    for (i = 0; i < len; i++) {
-      if (islower(f_name[i])) f_name[i] = toupper(f_name[i]);
-    }
-    efun_codes[efun_code] = (char *)malloc(len + 1);
-    strcpy(efun_codes[efun_code], f_name);
-    efun_names[efun_code] = (char *)malloc(len - 1);
-    strcpy(efun_names[efun_code], $2);
+    f_name = make_opcode_name($2);
+    efun_codes[efun_code] = copy_owned_string(f_name);
+    efun_names[efun_code] = copy_owned_string($2);
     efun_code++;
   } else {
-    if (strlen($3) + 1 + 17 > sizeof f_name) yyerror("A local buffer was too small(2)!\n");
-    sprintf(f_name, "F_%s | F_ALIAS_FLAG", $3);
-    len = strlen(f_name);
-    for (i = 0; i < len; i++) {
-      if (islower(f_name[i])) f_name[i] = toupper(f_name[i]);
-    }
+    f_name = make_opcode_name($3) + " | F_ALIAS_FLAG";
     free((void *)$3);
   }
   for (i = 0; i < last_current_type; i++) {
@@ -186,15 +196,11 @@ func: type ID optional_ID '(' arg_list optional_default ')' ';' {
     $1 = T_MIXED;
   }
 #endif
-  sprintf(buff, "{\"%s\",%s,0,0,%d,%d,%s,%s,%s,%s,%s,%d,%s},\n", $2, f_name, min_arg,
-          limit_max ? -1 : $5, $1 != T_VOID ? ctype($1) : "TYPE_NOVALUE",
-          etype(0).c_str(), etype(1).c_str(), etype(2).c_str(), etype(3).c_str(), i, $6);
-
-  if (strlen(buff) > sizeof buff) yyerror("Local buffer overwritten !\n");
+  auto buff = build_predef_entry($2, f_name, min_arg, limit_max ? -1 : $5,
+                                 $1 != T_VOID ? ctype($1) : "TYPE_NOVALUE", i, $6);
 
   key[num_buff] = $2;
-  buf[num_buff] = (char *)malloc(strlen(buff) + 1);
-  strcpy((char *)buf[num_buff], buff);
+  buf[num_buff] = copy_owned_string(buff);
   num_buff++;
   min_arg = -1;
   limit_max = 0;
@@ -213,9 +219,8 @@ basic: ID {
     }
   }
   if (!$$) {
-    char buf[256];
-    sprintf(buf, "Invalid type: %s", $1);
-    yyerror(buf);
+    auto message = std::string("Invalid type: ") + $1;
+    yyerror(message.c_str());
   }
   free((void *)$1);
 };

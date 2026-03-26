@@ -5,14 +5,19 @@
  */
 
 #include <cctype>    // for tolower
+#include <cerrno>    // for errno
 #include <cstdio>    // for fprintf, fclose, fgets, fopen, FILE
-#include <cstring>   // for strchr
+#include <cstring>   // for strchr, strerror
 #include <string>    // for string
 #include <iostream>  // for std::cerr
 
 static const char *APPLIES = "vm/internal/applies";
 static const char *APPLIES_H = "applies_table.autogen.h";
 static const char *APPLIES_TABLE = "applies_table.autogen.cc";
+
+static void report_open_error(const char *path) {
+  std::cerr << "error: failed to open '" << path << "': " << std::strerror(errno) << "\n";
+}
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -23,8 +28,23 @@ int main(int argc, char **argv) {
   applies_path += '/';
   applies_path += APPLIES;
   FILE *f = fopen(applies_path.c_str(), "r");
+  if (f == nullptr) {
+    report_open_error(applies_path.c_str());
+    return 1;
+  }
   FILE *out = fopen(APPLIES_H, "w");
+  if (out == nullptr) {
+    report_open_error(APPLIES_H);
+    fclose(f);
+    return 1;
+  }
   FILE *table = fopen(APPLIES_TABLE, "w");
+  if (table == nullptr) {
+    report_open_error(APPLIES_TABLE);
+    fclose(out);
+    fclose(f);
+    return 1;
+  }
   char buf[8192];
   char *colon;
   char *p;

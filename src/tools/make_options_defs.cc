@@ -34,8 +34,11 @@ void replaceAll(std::string& str, const std::string& from, const std::string& to
 int main(int argc, char** argv) {
   do_preprocess(argc, argv);
 
-  std::ofstream file;
-  file.open(FILENAME, std::ios::out);
+  std::ofstream file(FILENAME, std::ios::out | std::ios::trunc);
+  if (!file.is_open()) {
+    std::cerr << "Error: cannot open output file " << FILENAME << std::endl;
+    return 1;
+  }
 
   file << TPL_HEADER;
   for (auto p : defns) {
@@ -51,6 +54,15 @@ int main(int argc, char** argv) {
     }
   }
   file << TPL_FOOTER;
+  if (!file) {
+    std::cerr << "Error: failed to write output file " << FILENAME << std::endl;
+    return 1;
+  }
+  file.close();
+  if (!file) {
+    std::cerr << "Error: failed to close output file " << FILENAME << std::endl;
+    return 1;
+  }
 
   std::cout << "Generate Success!";
   return 0;

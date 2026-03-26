@@ -78,7 +78,7 @@ namespace fs = ghc::filesystem;
 #define OS_mkdir(x, y) mkdir(x, y)
 #endif
 
-static int match_string(char * /*match*/, char * /*str*/);
+static int match_string(const char * /*match*/, const char * /*str*/);
 static int do_move(const char *from, const char *to, int flag);
 static void encode_stat(svalue_t * /*vp*/, int /*flags*/, const char * /*str*/, struct stat * /*st*/);
 
@@ -145,10 +145,10 @@ array_t *get_dir(const char *path, int flags) {
   int do_match = 0;
 
   struct dirent *de;
-  struct stat st;
-  char temppath[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
-  char regexppath[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
-  char *p;
+  struct stat st {};
+  std::string temppath;
+  std::string regexppath;
+  size_t split_pos = 0;
 
   if (!path) {
     return nullptr;
@@ -161,45 +161,44 @@ array_t *get_dir(const char *path, int flags) {
   }
 
   if (strlen(path) < 2) {
-    temppath[0] = path[0] ? path[0] : '.';
-    temppath[1] = '\000';
-    p = temppath;
+    temppath = path[0] ? std::string(1, path[0]) : ".";
   } else {
-    strncpy(temppath, path, MAX_FNAME_SIZE + MAX_PATH_LEN + 1);
-    temppath[MAX_FNAME_SIZE + MAX_PATH_LEN + 1] = '\0';
+    temppath = path;
 
     /*
      * If path ends with '/' or "/." remove it
      */
-    if ((p = strrchr(temppath, '/')) == nullptr) {
-      p = temppath;
-    }
-    if (p[0] == '/' && ((p[1] == '.' && p[2] == '\0') || p[1] == '\0')) {
-      *p = '\0';
+    auto last_slash = temppath.find_last_of('/');
+    split_pos = (last_slash == std::string::npos) ? 0 : last_slash;
+    if (split_pos < temppath.size() && temppath[split_pos] == '/' &&
+        ((split_pos + 1 == temppath.size()) ||
+         (split_pos + 2 == temppath.size() && temppath[split_pos + 1] == '.'))) {
+      temppath.erase(split_pos);
     }
   }
 
-  if (stat(temppath, &st) < 0) {
-    if (*p == '\0') {
+  if (stat(temppath.c_str(), &st) < 0) {
+    if (split_pos == temppath.size()) {
       return nullptr;
     }
-    if (p != temppath) {
-      strcpy(regexppath, p + 1);
-      *p = '\0';
+    if (split_pos != 0) {
+      regexppath = temppath.substr(split_pos + 1);
+      temppath.erase(split_pos);
     } else {
-      strcpy(regexppath, p);
-      strcpy(temppath, ".");
+      regexppath = temppath;
+      temppath = ".";
     }
     do_match = 1;
-  } else if (*p != '\0' && strcmp(temppath, ".") != 0) {
-    if (*p == '/' && *(p + 1) != '\0') {
-      p++;
+  } else if (split_pos < temppath.size() && temppath != ".") {
+    const char *entry_name = temppath.c_str() + split_pos;
+    if (*entry_name == '/' && *(entry_name + 1) != '\0') {
+      entry_name++;
     }
     v = allocate_empty_array(1);
-    encode_stat(&v->item[0], flags, p, &st);
+    encode_stat(&v->item[0], flags, entry_name, &st);
     return v;
   }
-  if ((dirp = opendir(temppath)) == nullptr) {
+  if ((dirp = opendir(temppath.c_str())) == nullptr) {
     return nullptr;
   }
   struct DirEntry {
@@ -213,14 +212,14 @@ array_t *get_dir(const char *path, int flags) {
     if (!do_match && (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)) {
       continue;
     }
-    if (do_match && !match_string(regexppath, de->d_name)) {
+    if (do_match && !match_string(regexppath.c_str(), de->d_name)) {
       continue;
     }
 
     DirEntry entry;
     entry.name = de->d_name;
     if (flags == -1) {
-      auto full_path = append_path_component(temppath, de->d_name);
+      auto full_path = append_path_component(temppath.c_str(), de->d_name);
       if (stat(full_path.c_str(), &entry.st) != 0) {
         memset(&entry.st, 0, sizeof(entry.st));
       }
@@ -771,7 +770,7 @@ const char *check_valid_path(const char *path, object_t *call_object, const char
   return nullptr;
 }
 
-static int match_string(char *match, char *str) {
+static int match_string(const char *match, const char *str) {
   int i;
 
 again:

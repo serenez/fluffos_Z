@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -51,8 +52,21 @@ int main() {
     });
   }
 
-  std::ofstream file("keywords.json");
+  std::ofstream file("keywords.json", std::ios::binary | std::ios::trunc);
+  if (!file.is_open()) {
+    std::cerr << "Error: cannot open output file keywords.json" << std::endl;
+    return 1;
+  }
   file << j.dump(4);  // 4 spaces for indentation
+  if (!file) {
+    std::cerr << "Error: failed to write output file keywords.json" << std::endl;
+    return 1;
+  }
+  file.close();
+  if (!file) {
+    std::cerr << "Error: failed to close output file keywords.json" << std::endl;
+    return 1;
+  }
 
   return 0;
 }

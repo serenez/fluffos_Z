@@ -78,6 +78,7 @@
 #include "packages/core/ed.h"
 
 #include <algorithm>
+#include <string>
 
 #include "packages/core/file.h"
 #include "packages/core/regexp.h"
@@ -121,7 +122,7 @@ static int egets(char * /*str*/, int /*size*/, FILE * /*stream*/);
 static int doread(int /*lin*/, const char * /*fname*/);
 static int dowrite(int /*from*/, int /*to*/, const char * /*fname*/, int /*apflg*/);
 static int find(regexp * /*pat*/, int /*dir*/);
-static char *getfn(int /*writeflg*/);
+static const char *getfn(int /*writeflg*/);
 static int getnum(int /*first*/);
 static int getone();
 static int getlst();
@@ -167,7 +168,7 @@ outbuffer_t current_ed_results;
 #define P_NONASCII (ED_BUFFER->nonascii)
 #define P_NULLCHAR (ED_BUFFER->nullchar)
 #define P_TRUNCATED (ED_BUFFER->truncated)
-#define P_FNAME (ED_BUFFER->fname)
+#define P_FNAME (ED_BUFFER->fname ? ED_BUFFER->fname : "")
 #define P_FCHANGED (ED_BUFFER->fchanged)
 #define P_NOFNAME (ED_BUFFER->nofname)
 #define P_MARK (ED_BUFFER->mark)
@@ -210,6 +211,24 @@ outbuffer_t current_ed_results;
 
 static char inlin[ED_MAXLINE];
 static char *inptr; /* tty input buffer */
+
+static void clear_ed_filename() {
+  if (ED_BUFFER->fname != nullptr) {
+    FREE(ED_BUFFER->fname);
+    ED_BUFFER->fname = nullptr;
+  }
+}
+
+static void set_ed_filename(const char *fname) {
+  char *next = nullptr;
+
+  if (fname != nullptr && *fname != '\0') {
+    next = alloc_cstring(fname, "ed filename");
+  }
+
+  clear_ed_filename();
+  ED_BUFFER->fname = next;
+}
 
 static struct Tbl {
   const char *t_str;
@@ -586,6 +605,7 @@ static void free_ed_buffer(object_t *who) {
     if (P_OLDPAT) {
       FREE((char *)P_OLDPAT);
     }
+    clear_ed_filename();
     FREE((char *)ED_BUFFER);
     who->interactive->ed_buffer = nullptr;
     set_prompt("> ");
@@ -602,6 +622,7 @@ static void free_ed_buffer(object_t *who) {
   if (P_OLDPAT) {
     FREE((char *)P_OLDPAT);
   }
+  clear_ed_filename();
 #ifdef OLD_ED
   FREE((char *)ED_BUFFER);
   who->interactive->ed_buffer = nullptr;
@@ -854,54 +875,55 @@ static int find(regexp *pat, int dir) {
 
 /*      getfn.c */
 
-static char *getfn(int writeflg) {
-  static char file[MAXFNAME];
-  char *cp;
+static const char *getfn(int writeflg) {
+  static std::string file;
   const char *file2;
   svalue_t *ret;
 
+  file.clear();
+
   if (*inptr == NL) {
     P_NOFNAME = TRUE;
-    file[0] = '/';
-    strcpy(file + 1, P_FNAME);
+    if (*P_FNAME == '\0') {
+      ED_OUTPUT(ED_DEST, "no file name\n");
+      return nullptr;
+    }
+    file.push_back('/');
+    file += P_FNAME;
   } else {
     P_NOFNAME = FALSE;
     Skip_White_Space;
 
-    cp = file;
     while (*inptr && *inptr != NL && *inptr != SP && *inptr != HT) {
-      *cp++ = *inptr++;
+      file.push_back(*inptr++);
     }
-    *cp = '\0';
   }
-  if (strlen(file) == 0) {
+  if (file.empty()) {
     ED_OUTPUT(ED_DEST, "Bad file name.\n");
     return (nullptr);
   }
 
   if (file[0] != '/') {
-    copy_and_push_string(file);
+    copy_and_push_string(file.c_str());
     ret = apply_master_ob(APPLY_MAKE_PATH_ABSOLUTE, 1);
     if ((ret == nullptr) || (ret == (svalue_t *)-1) || ret->type != T_STRING) {
       return nullptr;
     }
-    strncpy(file, ret->u.string, sizeof file - 1);
-    file[MAXFNAME - 1] = '\0';
+    file.assign(ret->u.string);
   }
 
   /* valid_read/valid_write done here */
-  file2 = check_valid_path(file, current_editor, "ed_start", writeflg);
+  file2 = check_valid_path(file.c_str(), current_editor, "ed_start", writeflg);
   if (!file2) {
     return (nullptr);
   }
-  strncpy(file, file2, MAXFNAME - 1);
-  file[MAXFNAME - 1] = 0;
+  file.assign(file2);
 
-  if (*file == 0) {
+  if (file.empty()) {
     ED_OUTPUT(ED_DEST, "no file name\n");
     return (nullptr);
   }
-  return (file);
+  return file.c_str();
 } /* getfn */
 
 static int getnum(int first) {
@@ -1919,7 +1941,7 @@ static int docmd(int glob) {
   int c, err, line3;
   int apflg, pflag, gflag;
   int nchng;
-  char *fptr;
+  const char *fptr;
   int st;
   int scr;
 
@@ -2041,7 +2063,7 @@ static int docmd(int glob) {
       clrbuf();
       (void)doread(0, fptr);
 
-      strcpy(P_FNAME, fptr);
+      set_ed_filename(fptr);
       P_FCHANGED = FALSE;
       break;
 
@@ -2065,7 +2087,7 @@ static int docmd(int glob) {
         if (fptr == nullptr) {
           return FILE_NAME_ERROR;
         }
-        strcpy(P_FNAME, fptr);
+        set_ed_filename(fptr);
       }
       break;
 
@@ -2521,8 +2543,7 @@ void ed_start(const char *file_arg, const char *write_fn, const char *exit_fn, i
     setCurLn(1);
   }
   if (file_arg) {
-    strncpy(P_FNAME, file_arg, MAXFNAME - 1);
-    P_FNAME[MAXFNAME - 1] = 0;
+    set_ed_filename(file_arg);
   } else {
     ED_OUTPUT(ED_DEST, "No file.\n");
   }
@@ -3180,6 +3201,9 @@ static void object_free_ed_buffer() {
 
   tmp = *p;
   *p = (*p)->next_ed_buf;
+  if (tmp->fname != nullptr) {
+    FREE(tmp->fname);
+  }
   FREE(tmp);
 
   current_editor->flags &= ~O_IN_EDIT;
@@ -3226,8 +3250,7 @@ char *object_ed_start(object_t *ob, const char *fname, int restricted, int scrol
     setCurLn(1);
   }
   if (fname) {
-    strncpy(P_FNAME, fname, MAXFNAME - 1);
-    P_FNAME[MAXFNAME - 1] = 0;
+    set_ed_filename(fname);
   } else {
     ED_OUTPUT(ED_DEST, "No file.\n");
   }
@@ -3512,7 +3535,7 @@ void f_in_edit() {
     eb = find_ed_buffer(sp->u.ob);
   }
 #endif
-  if (eb && (fn = eb->fname)) {
+  if (eb && (fn = eb->fname) && *fn != '\0') {
     free_object(&sp->u.ob, "f_in_edit:1");
     put_malloced_string(add_slash(fn));
     return;

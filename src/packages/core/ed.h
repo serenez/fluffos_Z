@@ -98,7 +98,7 @@ typedef struct ed_buffer_s {
   int nonascii;  /* count of non-ascii chars read */
   int nullchar;  /* count of null chars read */
   int truncated; /* count of lines truncated */
-  char fname[MAXFNAME];
+  char *fname;
   int fchanged; /* file-changed? flag */
   int nofname;
   int mark['z' - 'a' + 1];

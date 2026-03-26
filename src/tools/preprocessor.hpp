@@ -12,6 +12,7 @@
 #include <string.h>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 #include <iostream>
 
@@ -131,7 +132,8 @@ void yywarn(char *str) {
 
 void yyerrorp(const char *str) {
   char buff[200];
-  sprintf(buff, str, ppchar);
+  snprintf(buff, sizeof(buff), str, ppchar);
+  buff[sizeof(buff) - 1] = '\0';
   fprintf(stderr, "%s:%d: %s\n", current_file, current_line, buff);
   exit(1);
 }
@@ -937,7 +939,6 @@ static void deltrail() {
 
 static void handle_include(char *name) {
   char *p;
-  static char buf[1024];
   FILE *f;
   incstate *is;
 
@@ -971,12 +972,14 @@ static void handle_include(char *name) {
     }
   }
   if (!found) {
-    sprintf(buf, "Cannot %cinclude %s", ppchar, name);
-    yyerror(buf);
+    std::string error = "Cannot ";
+    error.push_back(ppchar);
+    error += "include ";
+    error += name;
+    yyerror(error.c_str());
     return;
   }
 
-  std::cerr << "Opening file: " << include_file << std::endl;
   if ((f = fopen(include_file.c_str(), "r")) != nullptr) {
     is = (incstate *)malloc(sizeof(incstate) /*, 61, "handle_include: 1" */);
     is->yyin = yyin;
@@ -989,8 +992,11 @@ static void handle_include(char *name) {
     strcpy(current_file, name);
     yyin = f;
   } else {
-    sprintf(buf, "Cannot %cinclude %s", ppchar, name);
-    yyerror(buf);
+    std::string error = "Cannot ";
+    error.push_back(ppchar);
+    error += "include ";
+    error += name;
+    yyerror(error.c_str());
   }
 }
 
@@ -1103,9 +1109,12 @@ static void preprocess() {
           fprintf(yyout, "%s\n", yyp - 1);
         }
       } else {
-        char buff[200];
-        sprintf(buff, "Unrecognised %c directive : %s\n", ppchar, yyp);
-        yyerror(buff);
+        std::string error = "Unrecognised ";
+        error.push_back(ppchar);
+        error += " directive : ";
+        error += yyp;
+        error.push_back('\n');
+        yyerror(error.c_str());
       }
     } else if (c == '/') {
       if ((c = *++yyp2) == '*') {
