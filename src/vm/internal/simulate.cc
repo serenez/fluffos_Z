@@ -446,6 +446,7 @@ object_t *load_object(const char *lname, int callcreate) {
   if (!filename_to_obname(pname, actualname, sizeof actualname)) {
     error("Filenames with consecutive /'s in them aren't allowed (%s).\n", pname);
   }
+  const std::string object_name(name);
 
   /*
    * First check that the c-file exists.
@@ -480,10 +481,14 @@ object_t *load_object(const char *lname, int callcreate) {
     debug_perror("compile_file", real_name);
     error("Could not read the file '/%s'.\n", real_name);
   }
-  save_command_giver(command_giver);
-  auto stream = std::make_unique<FileLexStream>(f);
-  prog = compile_file(std::move(stream), obname);
-  restore_command_giver();
+  {
+    ScopedTracer _compile_tracer("load_object.compile_file", EventCategory::VM_COMPILE_FILE,
+                                 [&object_name] { return json{{"object", object_name}}; });
+    save_command_giver(command_giver);
+    auto stream = std::make_unique<FileLexStream>(f);
+    prog = compile_file(std::move(stream), obname);
+    restore_command_giver();
+  }
   update_compile_av(total_lines);
   total_lines = 0;
   close(f);
@@ -571,14 +576,26 @@ object_t *load_object(const char *lname, int callcreate) {
   ObjectTable::instance().insert(ob->obname, ob); /* add name to fast object lookup table */
   save_command_giver(command_giver);
   push_object(ob);
-  mret = apply_master_ob(APPLY_VALID_OBJECT, 1);
+  {
+    ScopedTracer _valid_object_tracer("load_object.valid_object", EventCategory::VM_LOAD_OBJECT,
+                                      [&object_name] { return json{{"object", object_name}}; });
+    mret = apply_master_ob(APPLY_VALID_OBJECT, 1);
+  }
   if (mret && !MASTER_APPROVED(mret)) {
     destruct_object(ob);
     error("master object: %s() denied permission to load '/%s'.\n",
           applies_table[APPLY_VALID_OBJECT], name);
   }
 
-  if (init_object(ob) && callcreate) {
+  int init_ok = 0;
+  {
+    ScopedTracer _init_tracer("load_object.init_object", EventCategory::VM_LOAD_OBJECT,
+                              [&object_name] { return json{{"object", object_name}}; });
+    init_ok = init_object(ob);
+  }
+  if (init_ok && callcreate) {
+    ScopedTracer _create_tracer("load_object.call_create", EventCategory::VM_LOAD_OBJECT,
+                                [&object_name] { return json{{"object", object_name}}; });
     call_create(ob, 0);
   }
   if (!(ob->flags & O_DESTRUCTED) && function_exists(APPLY_CLEAN_UP, ob, 1)) {

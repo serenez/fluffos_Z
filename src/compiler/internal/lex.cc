@@ -34,6 +34,7 @@
 #include "options.autogen.h"
 #include "vm/internal/base/program.h"
 #include "vm/internal/base/svalue.h"
+#include "base/internal/tracing.h"
 #include "compiler.h"
 #include "keyword.h"
 
@@ -1114,6 +1115,8 @@ static int skip_to(const char *token, const char *atoken) {
 }
 
 void init_include_path() {
+  ScopedTracer _tracer("compile.init_include_path", EventCategory::VM_COMPILE_FILE,
+                       [] { return json{{"file", current_file ? current_file : ""}}; });
   push_malloced_string(add_slash(current_file));  // does master has an include path?
   svalue_t *ret = safe_apply_master_ob(APPLY_GET_INCLUDE_PATH, 1);
 
@@ -1196,6 +1199,13 @@ static int inc_open(char *buf, char *name, int check_local) {
   int i, f;
   char *p;
   const char *tmp;
+  const std::string include_name(name ? name : "");
+
+  ScopedTracer _tracer("compile.include_open", EventCategory::IO_FS,
+                       [&include_name, check_local] {
+                         return json{{"include", include_name},
+                                     {"check_local", check_local != 0}};
+                       });
 
   if (check_local) {
     merge(name, buf);

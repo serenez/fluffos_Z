@@ -12,6 +12,7 @@
 
 #include "vm/internal/base/program.h"
 #include "vm/internal/base/svalue.h"
+#include "base/internal/tracing.h"
 #include "generate.h"
 #include "icode.h"
 #include "lex.h"
@@ -2420,6 +2421,9 @@ program_t *compile_file(std::unique_ptr<LexStream> stream, const char *name) {
   static int guard = 0;
   program_t *prog;
   extern int func_present;
+  const std::string compile_target(name);
+  ScopedTracer _tracer("LPC Compile File", EventCategory::VM_COMPILE_FILE,
+                       [&compile_target] { return json{{"object", compile_target}}; });
 
   /* The parser isn't reentrant.  On a few occasions (compile
    * errors, valid_override) LPC code is called during compilation,
@@ -2435,12 +2439,32 @@ program_t *compile_file(std::unique_ptr<LexStream> stream, const char *name) {
     auto *current_locale = setlocale(LC_ALL, "C");
     DEFER { setlocale(LC_ALL, current_locale); };
 
-    symbol_start(name);
-    prolog(std::move(stream), name);
+    {
+      ScopedTracer _phase("compile.symbol_start", EventCategory::VM_COMPILE_FILE,
+                          [&compile_target] { return json{{"object", compile_target}}; });
+      symbol_start(name);
+    }
+    {
+      ScopedTracer _phase("compile.prolog", EventCategory::VM_COMPILE_FILE,
+                          [&compile_target] { return json{{"object", compile_target}}; });
+      prolog(std::move(stream), name);
+    }
     func_present = 0;
-    yyparse();
-    symbol_end();
-    prog = epilog();
+    {
+      ScopedTracer _phase("compile.yyparse", EventCategory::VM_COMPILE_FILE,
+                          [&compile_target] { return json{{"object", compile_target}}; });
+      yyparse();
+    }
+    {
+      ScopedTracer _phase("compile.symbol_end", EventCategory::VM_COMPILE_FILE,
+                          [&compile_target] { return json{{"object", compile_target}}; });
+      symbol_end();
+    }
+    {
+      ScopedTracer _phase("compile.epilog", EventCategory::VM_COMPILE_FILE,
+                          [&compile_target] { return json{{"object", compile_target}}; });
+      prog = epilog();
+    }
   }
 
   guard = 0;

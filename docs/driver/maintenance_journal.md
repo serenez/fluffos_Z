@@ -119,6 +119,38 @@ title: driver 提交记录
 - 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\ctest.exe --test-dir build_codex_review_fix --output-on-failure -j 1，结果 46/46 全通过。
 ```
 
+### 2026-03-26 12:17
+
+**提交号**
+
+`当前提交（提交号见 git log）`
+
+**标题**
+
+`perf(driver): 补充启动 tracing 并沉淀冷启动链路分析`
+
+**提交信息**
+
+```text
+本次提交聚焦 driver 启动与编译阶段的 tracing 补点和分析落盘，目标不是直接修改 mudlib 逻辑，也不是新增 LPC API，而是把冷启动链路拆细，给后续驱动侧性能优化提供可靠证据。
+
+改动内容：
+- 在 src/compiler/internal/compiler.cc 的 compile_file() 内增加更细粒度的 ScopedTracer，覆盖 LPC Compile File、compile.symbol_start、compile.prolog、compile.yyparse、compile.symbol_end、compile.epilog 六个阶段，统一附带 object 参数，便于按对象拆解编译耗时。
+- 在 src/compiler/internal/lex.cc 的 include 路径初始化与 inc_open() 中增加 tracing，补充 compile.init_include_path 和 compile.include_open 事件，用于观察 include 路径构建与头文件打开成本。
+- 在 src/vm/internal/simulate.cc 的 load_object() 内拆出 load_object.compile_file、load_object.valid_object、load_object.init_object、load_object.call_create 四段，区分“对象编译”“master 校验”“对象初始化”和“create 链”各自的耗时。
+- 新增 docs/audit/startup_tracing_2026_03_26.md，记录 tracing 开关、事件名、抓取方式、样例命令和现阶段能回答/不能回答的问题。
+- 新增 docs/audit/startup_trace_findings_2026_03_26.md，基于真实 trace 样本整理启动链路结论，明确 preload 阶段的主要耗时落在 load_object()->call_create() 扩张链，而不是 parser 前端本身。
+
+验证记录：
+- 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\cmake.exe --build build_codex_review_fix --target lpcc --parallel 4，编译通过。
+- 在 D:\xiangmu\fluffos_Z\24xinduobao 下执行 lpcc --tracing 样本，成功生成 D:\xiangmu\fluffos_Z\build_codex_review_fix\trace_lpcc_skill.json。
+- 样本确认 adm/daemons/jz_all 与 adm/daemons/jz_skill 的源码编译阶段均不到 1 ms，主要耗时落在 load_object.call_create；同时确认当前 trace 上限 1000000 条事件在重 preload mudlib 下会被打满。
+
+边界说明：
+- 本次提交只补 tracing 与分析文档，不修改 mudlib 行为，不引入新的驱动接口。
+- 这批 tracing 主要用于给后续 driver 通用性能优化提供基线，不把结论绑定到某一份业务 mudlib 的实现方式上。
+```
+
 ### 2026-03-26 00:04
 
 **提交号**
