@@ -26,6 +26,7 @@
 
 void reset_debug_message_fp();
 void debug_message(const char *, ...);
+void debug_message_with_location(const char *file, int line, const char *fmt, ...);
 
 #define SAFE(x) \
   do {          \
@@ -53,13 +54,7 @@ void debug_level_clear(const char *);
 #define debug(x, ...)                                                                    \
   do {                                                                                   \
     if (debug_level & DBG_##x) {                                                         \
-      char _buf[1024], _tbuf[64];                                                        \
-      time_t _rawtime;                                                                   \
-      time(&_rawtime);                                                                   \
-      struct tm res = {};                                                                \
-      strftime(_tbuf, sizeof(_tbuf), "%Y-%m-%d %H:%M:%S", localtime_r(&_rawtime, &res)); \
-      snprintf(_buf, sizeof(_buf), __VA_ARGS__);                                         \
-      debug_message("[%s] %s:%d %s", _tbuf, __FILE__, __LINE__, _buf);                   \
+      debug_message_with_location(__FILE__, __LINE__, __VA_ARGS__);                      \
     }                                                                                    \
   } while (0)
 

@@ -70,27 +70,60 @@
 #include "packages/core/file.h"
 #include "packages/core/outbuf.h"
 
-#ifdef PACKAGE_ASYNC
-#include <pthread.h>
-#endif
-
 static int db_conn_alloc, db_conn_used;
-static db_t *db_conn_list;
+static db_t **db_conn_list;
 
 db_t *find_db_conn(int);
 static int create_db_conn();
 static void free_db_conn(db_t *);
 
 #ifdef PACKAGE_ASYNC
-extern pthread_mutex_t *db_mut;
+static pthread_mutex_t *db_table_mut = nullptr;
 
 static pthread_mutex_t *ensure_db_mutex() {
-  if (!db_mut) {
-    db_mut = reinterpret_cast<pthread_mutex_t *>(
+  if (!db_table_mut) {
+    db_table_mut = reinterpret_cast<pthread_mutex_t *>(
         DMALLOC(sizeof(pthread_mutex_t), TAG_PERMANENT, "db mutex"));
-    pthread_mutex_init(db_mut, nullptr);
+    pthread_mutex_init(db_table_mut, nullptr);
   }
-  return db_mut;
+  return db_table_mut;
+}
+
+db_t *lock_db_conn(int handle) {
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+
+  auto *db = find_db_conn(handle);
+  if (!db) {
+    pthread_mutex_unlock(db_mutex);
+    return nullptr;
+  }
+
+  pthread_mutex_lock(&db->mutex);
+  pthread_mutex_unlock(db_mutex);
+  return db;
+}
+
+void unlock_db_conn(db_t *db) {
+  if (db) {
+    pthread_mutex_unlock(&db->mutex);
+  }
+}
+
+static db_t *detach_db_conn(int handle) {
+  auto *db_mutex = ensure_db_mutex();
+  pthread_mutex_lock(db_mutex);
+
+  auto *db = find_db_conn(handle);
+  if (!db) {
+    pthread_mutex_unlock(db_mutex);
+    return nullptr;
+  }
+
+  pthread_mutex_lock(&db->mutex);
+  free_db_conn(db);
+  pthread_mutex_unlock(db_mutex);
+  return db;
 }
 #endif
 
@@ -184,17 +217,16 @@ svalue_t *valid_database(const char *action, array_t *info) {
 #ifdef F_DB_CLOSE
 void f_db_close() {
   int ret = 0;
-  db_t *db;
+  db_t *db = nullptr;
 
   valid_database("close", &the_null_array);
 
 #ifdef PACKAGE_ASYNC
-  auto *db_mutex = ensure_db_mutex();
-  pthread_mutex_lock(db_mutex);
-  DEFER { pthread_mutex_unlock(db_mutex); };
+  db = detach_db_conn(sp->u.number);
 #endif
-
+#ifndef PACKAGE_ASYNC
   db = find_db_conn(sp->u.number);
+#endif
   if (!db) {
     error("Attempt to close an invalid database handle\n");
   }
@@ -208,8 +240,12 @@ void f_db_close() {
     ret = db->type->close(&(db->c));
   }
 
+#ifdef PACKAGE_ASYNC
+  unlock_db_conn(db);
+#else
   /* Remove the entry from the linked list */
   free_db_conn(db);
+#endif
 
   sp->u.number = ret;
 }
@@ -228,17 +264,16 @@ void f_db_close() {
 #ifdef F_DB_COMMIT
 void f_db_commit() {
   int ret = 0;
-  db_t *db;
+  db_t *db = nullptr;
 
   valid_database("commit", &the_null_array);
 
 #ifdef PACKAGE_ASYNC
-  auto *db_mutex = ensure_db_mutex();
-  pthread_mutex_lock(db_mutex);
-  DEFER { pthread_mutex_unlock(db_mutex); };
+  db = lock_db_conn(sp->u.number);
 #endif
-
+#ifndef PACKAGE_ASYNC
   db = find_db_conn(sp->u.number);
+#endif
   if (!db) {
     error("Attempt to commit an invalid database handle\n");
   }
@@ -247,6 +282,9 @@ void f_db_commit() {
     ret = db->type->commit(&(db->c));
   }
 
+#ifdef PACKAGE_ASYNC
+  unlock_db_conn(db);
+#endif
   sp->u.number = ret;
 }
 #endif
@@ -384,7 +422,7 @@ void f_db_connect() {
 #ifdef F_DB_EXEC
 void f_db_exec() {
   int ret = 0;
-  db_t *db;
+  db_t *db = nullptr;
   array_t *info;
   info = allocate_empty_array(1);
   info->item[0].type = T_STRING;
@@ -393,12 +431,11 @@ void f_db_exec() {
   valid_database("exec", info);
 
 #ifdef PACKAGE_ASYNC
-  auto *db_mutex = ensure_db_mutex();
-  pthread_mutex_lock(db_mutex);
-  DEFER { pthread_mutex_unlock(db_mutex); };
+  db = lock_db_conn((sp - 1)->u.number);
 #endif
-
+#ifndef PACKAGE_ASYNC
   db = find_db_conn((sp - 1)->u.number);
+#endif
   if (!db) {
     error("Attempt to exec on an invalid database handle\n");
   }
@@ -424,6 +461,10 @@ void f_db_exec() {
   } else {
     sp->u.number = ret;
   }
+
+#ifdef PACKAGE_ASYNC
+  unlock_db_conn(db);
+#endif
 }
 #endif
 
@@ -453,18 +494,17 @@ void f_db_exec() {
  */
 #ifdef F_DB_FETCH
 void f_db_fetch() {
-  db_t *db;
+  db_t *db = nullptr;
   array_t *ret;
 
   valid_database("fetch", &the_null_array);
 
 #ifdef PACKAGE_ASYNC
-  auto *db_mutex = ensure_db_mutex();
-  pthread_mutex_lock(db_mutex);
-  DEFER { pthread_mutex_unlock(db_mutex); };
+  db = lock_db_conn((sp - 1)->u.number);
 #endif
-
+#ifndef PACKAGE_ASYNC
   db = find_db_conn((sp - 1)->u.number);
+#endif
   if (!db) {
     error("Attempt to fetch from an invalid database handle\n");
   }
@@ -488,6 +528,10 @@ void f_db_fetch() {
   } else {
     put_array(ret);
   }
+
+#ifdef PACKAGE_ASYNC
+  unlock_db_conn(db);
+#endif
 }
 #endif
 
@@ -502,17 +546,16 @@ void f_db_fetch() {
 #ifdef F_DB_ROLLBACK
 void f_db_rollback() {
   int ret = 0;
-  db_t *db;
+  db_t *db = nullptr;
 
   valid_database("rollback", &the_null_array);
 
 #ifdef PACKAGE_ASYNC
-  auto *db_mutex = ensure_db_mutex();
-  pthread_mutex_lock(db_mutex);
-  DEFER { pthread_mutex_unlock(db_mutex); };
+  db = lock_db_conn(sp->u.number);
 #endif
-
+#ifndef PACKAGE_ASYNC
   db = find_db_conn(sp->u.number);
+#endif
   if (!db) {
     error("Attempt to rollback an invalid database handle\n");
   }
@@ -527,6 +570,9 @@ void f_db_rollback() {
     }
   }
 
+#ifdef PACKAGE_ASYNC
+  unlock_db_conn(db);
+#endif
   sp->u.number = ret;
 }
 #endif
@@ -549,14 +595,21 @@ void f_db_status() {
 #endif
 
   for (i = 0; i < db_conn_alloc; i++) {
-    if (db_conn_list[i].flags & DB_FLAG_EMPTY) {
+    auto *db = db_conn_list ? db_conn_list[i] : nullptr;
+    if (!db || db->flags & DB_FLAG_EMPTY) {
       continue;
     }
 
-    outbuf_addv(&out, "Handle: %d (%s)\n", i + 1, db_conn_list[i].type->name);
-    if (db_conn_list[i].type->status != nullptr) {
-      db_conn_list[i].type->status(&(db_conn_list[i].c), &out);
+#ifdef PACKAGE_ASYNC
+    pthread_mutex_lock(&db->mutex);
+#endif
+    outbuf_addv(&out, "Handle: %d (%s)\n", i + 1, db->type->name);
+    if (db->type->status != nullptr) {
+      db->type->status(&(db->c), &out);
     }
+#ifdef PACKAGE_ASYNC
+    pthread_mutex_unlock(&db->mutex);
+#endif
   }
 
   outbuf_push(&out);
@@ -573,16 +626,18 @@ void db_cleanup() {
 #endif
 
   for (i = 0; i < db_conn_alloc; i++) {
-    if (!(db_conn_list[i].flags & DB_FLAG_EMPTY)) {
-      if (db_conn_list[i].type->cleanup) {
-        db_conn_list[i].type->cleanup(&(db_conn_list[i].c));
+    auto *db = db_conn_list ? db_conn_list[i] : nullptr;
+    if (db && !(db->flags & DB_FLAG_EMPTY)) {
+      if (db->type->cleanup) {
+        db->type->cleanup(&(db->c));
       }
 
-      if (db_conn_list[i].type->close) {
-        db_conn_list[i].type->close(&(db_conn_list[i].c));
+      if (db->type->close) {
+        db->type->close(&(db->c));
       }
 
-      db_conn_list[i].flags = DB_FLAG_EMPTY;
+      db->flags = DB_FLAG_EMPTY;
+      db->type = &no_db;
       db_conn_used--;
     }
   }
@@ -602,19 +657,38 @@ int create_db_conn() {
     i = db_conn_alloc;
     db_conn_alloc += 10;
     if (!db_conn_list) {
-      db_conn_list = (db_t *)DCALLOC(db_conn_alloc, sizeof(db_t), TAG_DB, "create_db_conn");
+      db_conn_list = reinterpret_cast<db_t **>(
+          DCALLOC(db_conn_alloc, sizeof(db_t *), TAG_DB, "create_db_conn"));
     } else {
-      db_conn_list = RESIZE(db_conn_list, db_conn_alloc, db_t, TAG_DB, "create_db_conn");
+      db_conn_list = RESIZE(db_conn_list, db_conn_alloc, db_t *, TAG_DB, "create_db_conn");
     }
     while (i < db_conn_alloc) {
-      db_conn_list[i++].flags = DB_FLAG_EMPTY;
+      db_conn_list[i++] = nullptr;
     }
   }
 
   for (i = 0; i < db_conn_alloc; i++) {
-    if (db_conn_list[i].flags & DB_FLAG_EMPTY) {
-      db_conn_list[i].flags = 0;
-      db_conn_list[i].type = &no_db;
+    auto *db = db_conn_list[i];
+    if (!db) {
+      db = reinterpret_cast<db_t *>(DCALLOC(1, sizeof(db_t), TAG_DB, "create_db_conn/slot"));
+#ifdef PACKAGE_ASYNC
+      pthread_mutex_init(&db->mutex, nullptr);
+#endif
+      db->flags = DB_FLAG_EMPTY;
+      db->type = &no_db;
+      db_conn_list[i] = db;
+    }
+
+    if (db->flags & DB_FLAG_EMPTY) {
+#ifdef PACKAGE_ASYNC
+      pthread_mutex_lock(&db->mutex);
+#endif
+      memset(&(db->c), 0, sizeof(db->c));
+      db->flags = 0;
+      db->type = &no_db;
+#ifdef PACKAGE_ASYNC
+      pthread_mutex_unlock(&db->mutex);
+#endif
       db_conn_used++;
       return i + 1;
     }
@@ -624,10 +698,15 @@ int create_db_conn() {
 }
 
 db_t *find_db_conn(int handle) {
-  if (handle < 1 || handle > db_conn_alloc || db_conn_list[handle - 1].flags & DB_FLAG_EMPTY) {
+  if (handle < 1 || handle > db_conn_alloc || !db_conn_list) {
     return nullptr;
   }
-  return &(db_conn_list[handle - 1]);
+
+  auto *db = db_conn_list[handle - 1];
+  if (!db || db->flags & DB_FLAG_EMPTY) {
+    return nullptr;
+  }
+  return db;
 }
 
 void free_db_conn(db_t *db) {
@@ -635,6 +714,7 @@ void free_db_conn(db_t *db) {
   DEBUG_CHECK(!db_conn_used, "Freeing DB connection when dbConnUsed == 0\n");
   db_conn_used--;
   db->flags |= DB_FLAG_EMPTY;
+  db->type = &no_db;
 }
 
 #ifdef DEBUGMALLOC_EXTENSIONS
@@ -642,6 +722,12 @@ void mark_db_conn() {
   auto *node = db_conn_list;
   if (node) {
     DO_MARK(node, TAG_DB);
+  }
+
+  for (int i = 0; i < db_conn_alloc; i++) {
+    if (db_conn_list[i]) {
+      DO_MARK(db_conn_list[i], TAG_DB);
+    }
   }
 }
 #endif

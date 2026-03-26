@@ -53,6 +53,7 @@ int set_call(struct object_t *, struct sentence_t *, int);
 void remove_interactive(struct object_t *, int);
 
 int flush_message(struct interactive_t *);
+void request_message_flush(struct interactive_t *);
 void flush_message_all();
 
 int query_idle(struct object_t *);

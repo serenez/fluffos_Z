@@ -13,6 +13,7 @@
 #include "vm/vm.h"
 
 #include <cstring>
+#include <deque>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -66,7 +67,13 @@ struct StrBuf {
     time_t last_touch; // 改名为 last_touch，表示最后活跃时间
 };
 
+struct ExpirationRecord {
+    int64_t id;
+    time_t expires_at;
+};
+
 static std::unordered_map<int64_t, StrBuf> g_str_buffers;
+static std::deque<ExpirationRecord> g_expiration_queue;
 static int64_t g_str_buf_id_counter = 0;
 
 // 配置
@@ -77,21 +84,27 @@ const int CLEANUP_BATCH_SIZE = 10;    // 每次只检查 10 个
 // ------------------------------------------------------------
 // 内部辅助：惰性清理
 // ------------------------------------------------------------
+static inline void touch_str_buffer(int64_t id, StrBuf& sb, time_t now) {
+    sb.last_touch = now;
+    g_expiration_queue.push_back({id, now + STR_BUFFER_TTL});
+}
+
 static void perform_lazy_cleanup() {
-    if (g_str_buffers.empty()) return;
+    if (g_str_buffers.empty() || g_expiration_queue.empty()) return;
 
     time_t now = time(nullptr);
     int checked = 0;
-    
-    // 从头部开始扫描。虽然 unordered_map 顺序不定，
-    // 但作为随机抽样检查已经足够有效。
-    auto it = g_str_buffers.begin();
-    while (it != g_str_buffers.end() && checked < CLEANUP_BATCH_SIZE) {
-        if (now - it->second.last_touch > STR_BUFFER_TTL) {
-            // 发现超时，删除之
-            it = g_str_buffers.erase(it);
-        } else {
-            ++it;
+
+    // 过期队列按访问时间递增推进，旧记录即使重复出现也能被快速跳过。
+    while (!g_expiration_queue.empty() && checked < CLEANUP_BATCH_SIZE) {
+        auto record = g_expiration_queue.front();
+        if (record.expires_at > now) {
+            break;
+        }
+        g_expiration_queue.pop_front();
+        auto it = g_str_buffers.find(record.id);
+        if (it != g_str_buffers.end() && (it->second.last_touch + STR_BUFFER_TTL) <= now) {
+            g_str_buffers.erase(it);
         }
         checked++;
     }
@@ -120,7 +133,7 @@ void f_strbuf_new(void) {
     
     StrBuf& sb = g_str_buffers[id];
     sb.buffer.reserve(256);
-    sb.last_touch = time(nullptr); // 初始化时间
+    touch_str_buffer(id, sb, time(nullptr));
     
     push_number(id);
 }
@@ -131,11 +144,12 @@ void f_strbuf_new(void) {
 void f_strbuf_add(void) {
     int64_t id = (sp - 1)->u.number;
     const char* text = sp->u.string;
+    perform_lazy_cleanup();
     
     auto it = g_str_buffers.find(id);
     if (it != g_str_buffers.end()) {
         it->second.buffer.append(text);
-        it->second.last_touch = time(nullptr); // 续命：更新时间戳
+        touch_str_buffer(id, it->second, time(nullptr));
     }
     
     pop_stack(); // pop text
@@ -149,6 +163,7 @@ void f_strbuf_addf(void) {
     int num_arg = st_num_arg;
     int64_t id = (sp - num_arg + 1)->u.number;
     const char* fmt = (sp - num_arg + 2)->u.string;
+    perform_lazy_cleanup();
     
     auto it = g_str_buffers.find(id);
     if (it == g_str_buffers.end()) {
@@ -160,7 +175,7 @@ void f_strbuf_addf(void) {
     
     if (res) {
         it->second.buffer.append(res);
-        it->second.last_touch = time(nullptr); // 续命
+        touch_str_buffer(id, it->second, time(nullptr));
         // 注意：标准 FluffOS 中 string_print_formatted 返回 malloc 内存
         // 建议使用 free() 而不是 FREE() 宏，除非你确定 FREE 映射到了 free
         free(res); 

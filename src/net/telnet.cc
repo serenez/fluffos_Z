@@ -103,7 +103,7 @@ static inline void on_telnet_iac(unsigned char cmd, interactive_t *ip) {
       break;
     }
     case TELNET_AO: { /* abort output */
-      flush_message(ip);
+      request_message_flush(ip);
       // Driver use to send response as OOB, but bufferevent doesn't support it.
       // We just send it non-OOB-ly. It's not like it matters to anyone anymore anyway.
       telnet_iac(ip->telnet, TELNET_DM);
@@ -113,7 +113,7 @@ static inline void on_telnet_iac(unsigned char cmd, interactive_t *ip) {
       debug(telnet, "on_telnet_iac: unsupported cmd %d.\n", cmd);
       break;
   }
-  flush_message(ip);
+  request_message_flush(ip);
 }
 
 static inline void on_telnet_will(unsigned char cmd, interactive_t *ip) {
@@ -148,7 +148,7 @@ static inline void on_telnet_will(unsigned char cmd, interactive_t *ip) {
       debug(telnet, "on_telnet_will: unimplemented command %d.\n", cmd);
       break;
   }
-  flush_message(ip);
+  request_message_flush(ip);
 }
 
 static inline void on_telnet_wont(unsigned char cmd, interactive_t *ip) {
@@ -259,7 +259,7 @@ static inline void on_telnet_do(unsigned char cmd, interactive_t *ip) {
       telnet_negotiate(ip->telnet, TELNET_WONT, cmd);
       break;
   }
-  flush_message(ip);
+  request_message_flush(ip);
 }
 
 static inline void on_telnet_dont(unsigned char cmd, interactive_t *ip) {
@@ -397,7 +397,7 @@ static inline void on_telnet_subnegotiation(unsigned char cmd, const char *buf, 
       break;
     }
   }
-  flush_message(ip);
+  request_message_flush(ip);
 }
 
 static inline void on_telnet_environ(const struct telnet_environ_t *values, unsigned long size,
@@ -568,7 +568,7 @@ void set_linemode(interactive_t *ip, bool flush) {
       telnet_negotiate(ip->telnet, TELNET_WONT, TELNET_TELOPT_SGA);
     }
     if (flush) {
-      flush_message(ip);
+      request_message_flush(ip);
     }
   }
 }
@@ -581,7 +581,7 @@ void set_charmode(interactive_t *ip, bool flush) {
       telnet_negotiate(ip->telnet, TELNET_WILL, TELNET_TELOPT_SGA);
     }
     if (flush) {
-      flush_message(ip);
+      request_message_flush(ip);
     }
   }
 }
@@ -590,7 +590,7 @@ void set_localecho(interactive_t *ip, bool enable, bool flush) {
   if (ip->telnet) {
     telnet_negotiate(ip->telnet, enable ? TELNET_WONT : TELNET_WILL, TELNET_TELOPT_ECHO);
     if (flush) {
-      flush_message(ip);
+      request_message_flush(ip);
     }
   }
 }

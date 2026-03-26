@@ -10,12 +10,12 @@
 #include "base/internal/rc.h"
 
 #include <cstring>  // for strlen
-#include <deque>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <cstdlib>  // for exit
 #include <string>
+#include <unordered_map>
 
 #include "base/internal/external_port.h"
 #include "base/internal/stralloc.h"
@@ -29,7 +29,7 @@ char *external_cmd[g_num_external_cmds];
 namespace {
 
 const int K_MAX_CONFIG_LINE_LENGTH = 120;
-std::deque<std::string> config_lines;
+std::unordered_map<std::string, std::string> config_line_lookup;
 
 struct FlagEntry {
   std::string key;
@@ -129,23 +129,26 @@ const int kOptional = 0;
 const int kWarnMissing = -1;
 const int K_WARN_FOUND = -2;
 
-bool scan_config_line(const char *fmt, void *dest, int required) {
-  /* zero the destination.  It is either a pointer to an int or a char
-   buffer, so this will work */
-  *(reinterpret_cast<int *>(dest)) = 0;
-
-  bool found = false;
-  for (const auto &line : config_lines) {
-    if (sscanf(line.c_str(), fmt, dest) == 1) {
-      found = true;
-      break;
-    }
-  }
-
-  std::string line(fmt);
+std::string config_key_for_line(const std::string &line) {
   auto pos = line.find_first_of(':');
   if (pos != std::string::npos) {
-    line = line.substr(0, pos);
+    return trim(line.substr(0, pos));
+  }
+  return trim(line);
+}
+
+bool scan_config_line(const char *fmt, void *dest, int required) {
+  /* zero the destination.  It is either a pointer to an int or a char
+  buffer, so this will work */
+  *(reinterpret_cast<int *>(dest)) = 0;
+
+  std::string line(fmt);
+  line = config_key_for_line(line);
+
+  bool found = false;
+  auto it = config_line_lookup.find(line);
+  if (it != config_line_lookup.end() && sscanf(it->second.c_str(), fmt, dest) == 1) {
+    found = true;
   }
 
   if (found) {
@@ -224,7 +227,8 @@ void read_config(const char *filename) {
     if (v.empty()) {
       continue;
     }
-    config_lines.push_back(v + "\n");
+    auto key = config_key_for_line(v);
+    config_line_lookup.try_emplace(key, v + "\n");
   }
 
   // Process global include file.
@@ -401,9 +405,7 @@ void read_config(const char *filename) {
       }
     }
   }
-  // TODO: get rid of config_lines all together.
-  config_lines.clear();
-  config_lines.shrink_to_fit();
+  config_line_lookup.clear();
 }
 
 void print_rc_table() {

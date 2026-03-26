@@ -7,6 +7,7 @@
 #include "base/internal/tracing.h"
 #include "packages/core/file.h"
 
+#include <algorithm>
 #include <iostream>
 #include <cerrno>
 #if HAVE_DIRENT_H
@@ -41,6 +42,7 @@
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <vector>
 #include <zlib.h>
 
 #include "base/internal/strutils.h"
@@ -78,9 +80,7 @@ namespace fs = ghc::filesystem;
 
 static int match_string(char * /*match*/, char * /*str*/);
 static int do_move(const char *from, const char *to, int flag);
-static int pstrcmp(const void * /*p1*/, const void * /*p2*/);
-static int parrcmp(const void * /*p1*/, const void * /*p2*/);
-static void encode_stat(svalue_t * /*vp*/, int /*flags*/, char * /*str*/, struct stat * /*st*/);
+static void encode_stat(svalue_t * /*vp*/, int /*flags*/, const char * /*str*/, struct stat * /*st*/);
 
 static std::string append_path_component(const char *dir, const char *name) {
   std::string path(dir);
@@ -93,24 +93,7 @@ static std::string append_path_component(const char *dir, const char *name) {
 
 enum { MAX_LINES = 50 };
 
-/*
- * These are used by qsort in get_dir().
- */
-static int pstrcmp(const void *p1, const void *p2) {
-  auto *x = (svalue_t *)p1;
-  auto *y = (svalue_t *)p2;
-
-  return strcmp(x->u.string, y->u.string);
-}
-
-static int parrcmp(const void *p1, const void *p2) {
-  auto *x = (svalue_t *)p1;
-  auto *y = (svalue_t *)p2;
-
-  return strcmp(x->u.arr->item[0].u.string, y->u.arr->item[0].u.string);
-}
-
-static void encode_stat(svalue_t *vp, int flags, char *str, struct stat *st) {
+static void encode_stat(svalue_t *vp, int flags, const char *str, struct stat *st) {
   if (flags == -1) {
     array_t *v = allocate_empty_array(3);
 
@@ -158,13 +141,11 @@ array_t *get_dir(const char *path, int flags) {
   auto max_array_size = CONFIG_INT(__MAX_ARRAY_SIZE__);
 
   array_t *v;
-  int i, count = 0;
   DIR *dirp;
-  int namelen, do_match = 0;
+  int do_match = 0;
 
   struct dirent *de;
   struct stat st;
-  char *endtemp;
   char temppath[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
   char regexppath[MAX_FNAME_SIZE + MAX_PATH_LEN + 2];
   char *p;
@@ -221,60 +202,40 @@ array_t *get_dir(const char *path, int flags) {
   if ((dirp = opendir(temppath)) == nullptr) {
     return nullptr;
   }
-  /*
-   * Count files
-   */
-  for (de = readdir(dirp); de; de = readdir(dirp)) {
-    namelen = strlen(de->d_name);
+  struct DirEntry {
+    std::string name;
+    struct stat st {};
+  };
+  std::vector<DirEntry> entries;
+  entries.reserve(std::min(max_array_size, 256));
+
+  for (de = readdir(dirp); de && static_cast<int>(entries.size()) < max_array_size; de = readdir(dirp)) {
     if (!do_match && (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)) {
       continue;
     }
     if (do_match && !match_string(regexppath, de->d_name)) {
       continue;
     }
-    count++;
-    if (count >= max_array_size) {
-      break;
-    }
-  }
 
-  /*
-   * Make array and put files on it.
-   */
-  v = allocate_empty_array(count);
-  if (count == 0) {
-    /* This is the easy case :-) */
-    closedir(dirp);
-    return v;
-  }
-  rewinddir(dirp);
-  endtemp = temppath + strlen(temppath);
-
-  strcat(endtemp++, "/");
-
-  for (i = 0, de = readdir(dirp); i < count; de = readdir(dirp)) {
-    namelen = strlen(de->d_name);
-    if (!do_match && (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)) {
-      continue;
-    }
-    if (do_match && !match_string(regexppath, de->d_name)) {
-      continue;
-    }
-    de->d_name[namelen] = '\0';
+    DirEntry entry;
+    entry.name = de->d_name;
     if (flags == -1) {
-      /*
-       * We'll have to .... sigh.... stat() the file to get some add'tl
-       * info.
-       */
-      strcpy(endtemp, de->d_name);
-      stat(temppath, &st); /* We assume it works. */
+      auto full_path = append_path_component(temppath, de->d_name);
+      if (stat(full_path.c_str(), &entry.st) != 0) {
+        memset(&entry.st, 0, sizeof(entry.st));
+      }
     }
-    encode_stat(&v->item[i], flags, de->d_name, &st);
-    i++;
+    entries.emplace_back(std::move(entry));
   }
   closedir(dirp);
-  /* Sort the names. */
-  qsort((void *)v->item, count, sizeof v->item[0], (flags == -1) ? parrcmp : pstrcmp);
+
+  std::sort(entries.begin(), entries.end(),
+            [](const DirEntry &lhs, const DirEntry &rhs) { return lhs.name < rhs.name; });
+
+  v = allocate_empty_array(entries.size());
+  for (size_t i = 0; i < entries.size(); i++) {
+    encode_stat(&v->item[i], flags, entries[i].name.c_str(), &entries[i].st);
+  }
   return v;
 }
 

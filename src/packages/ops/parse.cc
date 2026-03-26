@@ -13,6 +13,9 @@
 
 #include "packages/ops/parse.h"
 
+#include <string>
+#include <unordered_map>
+
 #include "packages/core/add_action.h"
 
 /*****************************************************
@@ -875,7 +878,47 @@ static const char *num1[] = {"",        "one",     "two",       "three",    "fou
                              "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
 
 static const char *num10[] = {"",      "",      "twenty",  "thirty", "forty",
-                              "fifty", "sixty", "seventy", "eighty", "ninety"};
+                               "fifty", "sixty", "seventy", "eighty", "ninety"};
+
+namespace {
+const std::unordered_map<std::string, int> &cardinal_number_lookup() {
+  static const auto lookup = [] {
+    std::unordered_map<std::string, int> result;
+    result.reserve(100);
+    for (int ten = 0; ten < 10; ten++) {
+      for (int ones = 0; ones < 10; ones++) {
+        int const value = ten * 10 + ones;
+        std::string word = num10[ten];
+        word += (ten > 1) ? num1[ones] : num1[value];
+        if (!word.empty()) {
+          result.emplace(std::move(word), value);
+        }
+      }
+    }
+    return result;
+  }();
+  return lookup;
+}
+
+const std::unordered_map<std::string, int> &ordinal_number_lookup() {
+  static const auto lookup = [] {
+    std::unordered_map<std::string, int> result;
+    result.reserve(100);
+    for (int ten = 0; ten < 10; ten++) {
+      for (int ones = 0; ones < 10; ones++) {
+        int const value = ten * 10 + ones;
+        std::string word = ones ? ord10[ten] : sord10[ten];
+        word += (ten > 1) ? ord1[ones] : ord1[value];
+        if (!word.empty()) {
+          result.emplace(std::move(word), -value);
+        }
+      }
+    }
+    return result;
+  }();
+  return lookup;
+}
+}  // namespace
 
 #endif
 
@@ -894,8 +937,7 @@ static const char *num10[] = {"",      "",      "twenty",  "thirty", "forty",
  * Returns:             svalue holding result of parse.
  */
 static svalue_t *number_parse(array_t *warr, int *cix_in, int *fail) {
-  int cix, ten, ones, num;
-  char buf[100];
+  int cix, num;
 
   cix = *cix_in;
   *fail = 0;
@@ -916,31 +958,20 @@ static svalue_t *number_parse(array_t *warr, int *cix_in, int *fail) {
     parse_ret.u.number = 0;
     return &parse_ret;
   }
-  /* This next double loop is incredibly stupid. -Beek */
-  for (ten = 0; ten < 10; ten++) {
-    for (ones = 0; ones < 10; ones++) {
-      sprintf(buf, "%s%s", num10[ten], (ten > 1) ? num1[ones] : num1[ten * 10 + ones]);
-      if (EQ(buf, warr->item[cix].u.string)) {
-        (*cix_in)++;
-        parse_ret.type = T_NUMBER;
-        parse_ret.u.number = ten * 10 + ones;
-        return &parse_ret;
-      }
-    }
+  auto card_it = cardinal_number_lookup().find(warr->item[cix].u.string);
+  if (card_it != cardinal_number_lookup().end()) {
+    (*cix_in)++;
+    parse_ret.type = T_NUMBER;
+    parse_ret.u.number = card_it->second;
+    return &parse_ret;
   }
 
-  /* this one too */
-  for (ten = 0; ten < 10; ten++) {
-    for (ones = 0; ones < 10; ones++) {
-      sprintf(buf, "%s%s", (ones) ? ord10[ten] : sord10[ten],
-              (ten > 1) ? ord1[ones] : ord1[ten * 10 + ones]);
-      if (EQ(buf, warr->item[cix].u.string)) {
-        (*cix_in)++;
-        parse_ret.type = T_NUMBER;
-        parse_ret.u.number = -(ten * 10 + ones);
-        return &parse_ret;
-      }
-    }
+  auto ord_it = ordinal_number_lookup().find(warr->item[cix].u.string);
+  if (ord_it != ordinal_number_lookup().end()) {
+    (*cix_in)++;
+    parse_ret.type = T_NUMBER;
+    parse_ret.u.number = ord_it->second;
+    return &parse_ret;
   }
 
   *fail = 1;

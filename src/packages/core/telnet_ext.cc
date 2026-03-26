@@ -10,7 +10,7 @@ void f_request_term_type() {
   auto *ip = current_object->interactive;
   if (ip && ip->telnet) {
     telnet_request_ttype(ip->telnet);
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message(
         "Warning: wrong usage. request_term_type() should only be called by a user object.\n");
@@ -23,7 +23,7 @@ void f_start_request_term_type() {
   auto *ip = command_giver->interactive;
   if (ip && ip->telnet) {
     telnet_start_request_ttype(ip->telnet);
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message(
         "Warning: wrong usage. start_request_term_type() should only be called by a user "
@@ -42,7 +42,7 @@ void f_request_term_size() {
     } else {
       telnet_do_naws(ip->telnet);
     }
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message(
         "Warning: wrong usage. request_term_size() should only be called by a user object.\n");
@@ -58,7 +58,7 @@ void f_telnet_nop() {
   auto *ip = current_object->interactive;
   if (ip && ip->telnet) {
     telnet_send_nop(ip->telnet);
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message("Warning: wrong usage. telnet_nop() should only be called by a user object.\n");
   }
@@ -70,7 +70,7 @@ void f_telnet_ga() {
   auto *ip = current_object->interactive;
   if (ip && ip->telnet) {
     telnet_send_ga(ip->telnet);
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message("Warning: wrong usage. telnet_ga() should only be called by a user object.\n");
   }
@@ -127,7 +127,7 @@ void f_send_gmcp() {
     std::string const transdata = u8_convert_encoding(ip->trans, data, len);
     std::string_view const result = transdata.empty() ? std::string_view(data, len) : transdata;
     telnet_subnegotiation(ip->telnet, TELNET_TELOPT_GMCP, result.data(), result.size());
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message("Warning: wrong usage. send_gmcp() should only be called by a user object.\n");
   }
@@ -199,7 +199,7 @@ void f_send_msdp_variable() {
         error("Bad argument 2 to send_msdp_variable()\n");
         break;
     }
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message("Warning: wrong usage. send_msdp_variable() should only be called by a user object.\n");
   }
@@ -236,7 +236,7 @@ void f_send_zmp() {
 
     telnet_finish_zmp(ip->telnet);
 
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message("Warning: wrong usage. send_zmp() should only be called by a user object.\n");
   }
@@ -249,7 +249,7 @@ void f_telnet_msp_oob() {
   auto *ip = current_object->interactive;
   if (ip && ip->telnet) {
     telnet_send_msp_oob(ip, sp->u.string, SVALUE_STRLEN(sp));
-    flush_message(ip);
+    request_message_flush(ip);
   } else if (!ip) {
     debug_message(
         "Warning: wrong usage. telnet_msp_oob() should only be called by a user object.\n");

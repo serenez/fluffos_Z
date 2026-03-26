@@ -40,6 +40,7 @@
 #define GATEWAY_SESSION 0x200000 /* this is a gateway session */
 #define GATEWAY_MSGPACK 0x400000 /* gateway session uses msgpack/json */
 #define PENDING_LOGON 0x800000 /* logon has been scheduled but not completed */
+#define OUTPUT_FLUSH_PENDING 0x1000000 /* output flush has been deferred to event loop */
 
 // from ICU
 struct UConverter;

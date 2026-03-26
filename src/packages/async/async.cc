@@ -2,7 +2,9 @@
 
 #include "packages/async/async.h"
 
+#include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -66,25 +68,36 @@ struct Work {
 
 std::deque<struct Work *> reqs;
 std::mutex reqs_lock;
+std::condition_variable reqs_cv;
+std::condition_variable reqs_idle_cv;
+std::thread worker_thread;
+bool worker_thread_started = false;
+bool worker_thread_stopping = false;
+bool worker_thread_busy = false;
 
 std::deque<struct Request *> finished_reqs;
 std::mutex finished_reqs_lock;
+bool callback_event_pending = false;
 
 void thread_func() {
   Tracer::setThreadName("Package Async thread");
 
   ScopedTracer const tracer("Async thread loop");
 
+  std::unique_lock<std::mutex> lock(reqs_lock);
   while (true) {
-    struct Work *w = nullptr;
-    {
-      std::lock_guard<std::mutex> const lock(reqs_lock);
-      if (reqs.empty()) {
-        return;
-      }
-      w = reqs.front();
-      reqs.pop_front();
+    reqs_cv.wait(lock, [] { return worker_thread_stopping || !reqs.empty(); });
+    if (worker_thread_stopping && reqs.empty()) {
+      worker_thread_started = false;
+      worker_thread_busy = false;
+      reqs_idle_cv.notify_all();
+      return;
     }
+
+    auto *w = reqs.front();
+    reqs.pop_front();
+    worker_thread_busy = true;
+    lock.unlock();
 
     if (w) {
       {
@@ -95,18 +108,30 @@ void thread_func() {
         w->func(w->data);
       }
       if (w->data->status == DONE) {
+        bool should_schedule = false;
         {
-          std::lock_guard<std::mutex> const lock(finished_reqs_lock);
+          std::lock_guard<std::mutex> const finished_lock(finished_reqs_lock);
           finished_reqs.push_back(w->data);
+          if (!callback_event_pending) {
+            callback_event_pending = true;
+            should_schedule = true;
+          }
         }
         delete w;
+        if (should_schedule) {
+          add_walltime_event(std::chrono::milliseconds(0), TickEvent::callback_type([] { check_reqs(); }));
+        }
       } else {
-        std::lock_guard<std::mutex> const lock(reqs_lock);
+        std::lock_guard<std::mutex> const req_lock(reqs_lock);
         reqs.push_back(w);
+        reqs_cv.notify_one();
       }
+    }
 
-      add_walltime_event(std::chrono::milliseconds(0),
-                         TickEvent::callback_type([] { check_reqs(); }));
+    lock.lock();
+    worker_thread_busy = false;
+    if (reqs.empty()) {
+      reqs_idle_cv.notify_all();
     }
   }
 }
@@ -114,8 +139,10 @@ void thread_func() {
 void do_stuff(void *(*func)(struct Request *), struct Request *data) {
   std::lock_guard<std::mutex> const lock(reqs_lock);
 
-  if (reqs.empty()) {
-    std::thread(thread_func).detach();
+  if (!worker_thread_started) {
+    worker_thread_stopping = false;
+    worker_thread_started = true;
+    worker_thread = std::thread(thread_func);
   }
 
   auto *i = new Work;
@@ -123,6 +150,7 @@ void do_stuff(void *(*func)(struct Request *), struct Request *data) {
   i->data = data;
 
   reqs.push_back(i);
+  reqs_cv.notify_one();
 }
 
 void *gzreadthread(struct Request *req) {
@@ -237,14 +265,10 @@ int aio_read(struct Request *req) {
 } // namespace
 
 #ifdef F_ASYNC_DB_EXEC
-pthread_mutex_t *db_mut = nullptr;
-
 void *dbexecthread(struct Request *req) {
   ScopedTracer const work_tracer("db_exec", EventCategory::DEFAULT, [=] { return json{req->data}; });
 
-  pthread_mutex_lock(db_mut);
-  // see add_db_exec
-  db_t *db = find_db_conn(req->handle);
+  db_t *db = lock_db_conn(req->handle);
   int ret = -1;
   if (db && db->type->execute) {
     if (db->type->cleanup) {
@@ -264,7 +288,7 @@ void *dbexecthread(struct Request *req) {
   } else {
     req->path = std::string("No database exec function!");
   }
-  pthread_mutex_unlock(db_mut);
+  unlock_db_conn(db);
 
   req->ret = ret;
   req->status = DONE;
@@ -288,22 +312,19 @@ void *getdirthread(struct Request *req) {
     req->status = DONE;
     return nullptr;
   }
-  /*
-   * Count files
-   */
-  int i = 0;
   req->entries.clear();
   for (auto *de = readdir(dirp); de; de = readdir(dirp)) {
     if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
-    if (req->entries.size() < req->limit) {
-      req->entries.emplace_back(de->d_name);
+    if (req->entries.size() >= req->limit) {
+      break;
     }
-    i++;
+    req->entries.emplace_back(de->d_name);
   }
 
   closedir(dirp);
 
-  req->ret = i;
+  std::sort(req->entries.begin(), req->entries.end());
+  req->ret = req->entries.size();
   req->status = DONE;
   return nullptr;
 }
@@ -407,14 +428,6 @@ void handle_getdir(struct Request *req) {
       vp->subtype = STRING_MALLOC;
       vp->u.string = string_copy(req->entries[i].c_str(), "encode_stat");
     }
-
-    qsort((void *)ret->item, ret_size, sizeof ret->item[0],
-          [](const void *p1, const void *p2) -> int {
-            auto *x = (svalue_t *)p1;
-            auto *y = (svalue_t *)p2;
-
-            return strcmp(x->u.string, y->u.string);
-          });
   }
 
   push_refed_array(ret);
@@ -450,10 +463,16 @@ void handle_db_exec(struct Request *req) {
 void check_reqs() {
   ScopedTracer const tracer("Async callback");
 
-  std::lock_guard<std::mutex> const lock(finished_reqs_lock);
-  while (!finished_reqs.empty()) {
-    auto *req = finished_reqs.front();
-    finished_reqs.pop_front();
+  std::deque<struct Request *> ready;
+  {
+    std::lock_guard<std::mutex> const lock(finished_reqs_lock);
+    callback_event_pending = false;
+    ready.swap(finished_reqs);
+  }
+
+  while (!ready.empty()) {
+    auto *req = ready.front();
+    ready.pop_front();
 
     enum atypes const type = (req->type);
     req->type = ADONE;
@@ -487,12 +506,15 @@ void check_reqs() {
 }
 
 void complete_all_asyncio() {
-  while (true) {
-    std::lock_guard<std::mutex> const lock(reqs_lock);
+  {
+    std::unique_lock<std::mutex> lock(reqs_lock);
+    reqs_idle_cv.wait(lock, [] { return reqs.empty() && !worker_thread_busy; });
+    worker_thread_stopping = true;
+    reqs_cv.notify_one();
+  }
 
-    if (reqs.empty()) {
-      break;
-    }
+  if (worker_thread.joinable()) {
+    worker_thread.join();
   }
   check_reqs();
 }
@@ -548,16 +570,11 @@ void f_async_db_exec() {
   info->item[0].u.string = string_copy(sp->u.string, "f_db_exec");
   valid_database("exec", info);
 
-  db_t *db;
-  db = find_db_conn((sp - 1)->u.number);
+  db_t *db = lock_db_conn((sp - 1)->u.number);
   if (!db) {
     error("Attempt to exec on an invalid database handle\n");
   }
-
-  if (!db_mut) {
-    db_mut = (pthread_mutex_t *)DMALLOC(sizeof(pthread_mutex_t), TAG_PERMANENT, "async_db_exec");
-    pthread_mutex_init(db_mut, nullptr);
-  }
+  unlock_db_conn(db);
   add_db_exec((sp - 1)->u.number, sp->u.string, cb.release());
   pop_2_elems();
 }

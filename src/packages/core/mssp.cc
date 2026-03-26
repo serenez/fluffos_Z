@@ -28,7 +28,7 @@ static int send_mssp_val(mapping_t * /*map*/, mapping_node_t *el, void *data) {
         telnet_printf(ip->telnet, "%s", ar->item[i].u.string);
       }
     }
-    flush_message(ip);
+    request_message_flush(ip);
   }
   return 0;
 }

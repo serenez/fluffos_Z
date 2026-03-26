@@ -73,6 +73,7 @@ struct UserEventData {
 
 constexpr int kUserReadChunkSize = 64 * 1024;
 int g_user_logon_callback_runs_for_test = 0;
+bool g_message_flush_scheduled = false;
 
 bool ensure_text_tail_capacity(interactive_t *ip, int extra_bytes) {
   if (!ip || extra_bytes < 0) {
@@ -944,6 +945,8 @@ int flush_message(interactive_t *ip) {
     return 0;
   }
 
+  ip->iflags &= ~OUTPUT_FLUSH_PENDING;
+
   // Currently only support Libevent based connections, for websocket based connections, they use
   // ip->lws.
   if (ip->ev_buffer) {
@@ -985,6 +988,31 @@ int flush_message(interactive_t *ip) {
   }
 
   return 0;
+}
+
+namespace {
+void run_scheduled_message_flush() {
+  g_message_flush_scheduled = false;
+  users_foreach([](interactive_t *user) {
+    if (user->iflags & OUTPUT_FLUSH_PENDING) {
+      user->iflags &= ~OUTPUT_FLUSH_PENDING;
+      flush_message(user);
+    }
+  });
+}
+}  // namespace
+
+void request_message_flush(interactive_t *ip) {
+  if (!ip || !ip->ob || !IP_VALID(ip, ip->ob) || (ip->iflags & CLOSING)) {
+    return;
+  }
+
+  ip->iflags |= OUTPUT_FLUSH_PENDING;
+  if (!g_message_flush_scheduled) {
+    g_message_flush_scheduled = true;
+    add_walltime_event(std::chrono::milliseconds(0),
+                       TickEvent::callback_type([] { run_scheduled_message_flush(); }));
+  }
 }
 
 void flush_message_all() {

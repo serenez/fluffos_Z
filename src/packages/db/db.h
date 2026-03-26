@@ -1,6 +1,10 @@
 #ifndef PACKAGES_DB_H
 #define PACKAGES_DB_H
 
+#ifdef PACKAGE_ASYNC
+#include <pthread.h>
+#endif
+
 #ifdef USE_POSTGRES
 #include <libpq-fe.h>
 #endif
@@ -63,12 +67,19 @@ struct db_defn_t {
 struct db_t {
   int flags;
   db_defn_t *type;
+#ifdef PACKAGE_ASYNC
+  pthread_mutex_t mutex;
+#endif
   union dbconn_t c;
 };
 
 void db_cleanup(void);
 svalue_t *valid_database(const char *action, array_t *info);
 db_t *find_db_conn(int handle);
+#ifdef PACKAGE_ASYNC
+db_t *lock_db_conn(int handle);
+void unlock_db_conn(db_t *db);
+#endif
 
 void mark_db_conn();
 #endif /* PACKAGES_DB_H */

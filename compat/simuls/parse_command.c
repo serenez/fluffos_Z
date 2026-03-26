@@ -1,5 +1,34 @@
 private mixed *ret;
 private mixed value;
+private mapping cardinal_number_lookup = ([]);
+private mapping ordinal_number_lookup = ([]);
+
+private void
+ensure_number_lookups()
+{
+    int ten, ones, num;
+    string word;
+
+    if (sizeof(cardinal_number_lookup)) {
+	return;
+    }
+
+    for (ten = 0; ten < 10; ten++) {
+	for (ones = 0; ones < 10; ones++) {
+	    num = ten * 10 + ones;
+	    word = num10[ten] + (ten > 1 ? num1[ones] : num1[num]);
+	    if (word != "") {
+		cardinal_number_lookup[word] = num;
+	    }
+
+	    word = (ones ? ord10[ten] : sord10[ten]) +
+		   (ten > 1 ? ord1[ones] : ord1[num]);
+	    if (word != "") {
+		ordinal_number_lookup[word] = -num;
+	    }
+	}
+    }
+}
 
 private void
 load_lpc_info(int ix, object ob)
@@ -339,8 +368,7 @@ string *num10 = ({"", "", "twenty", "thirty", "forty", "fifty", "sixty",
 
 private int
 number_parse(mixed *obarr, mixed *warr, int ref cix_in) {
-    int cix, ten, ones, num;
-    string buf;
+    int cix, num;
 
     cix = *cix_in;
 
@@ -357,27 +385,17 @@ number_parse(mixed *obarr, mixed *warr, int ref cix_in) {
 	value = 0;
 	return 0;
     }
-    /* This next double loop is incredibly stupid. -Beek */
-    for (ten = 0; ten < 10; ten++)
-	for (ones = 0; ones < 10; ones++) {
-	    buf = num10[ten] + (ten > 1 ? num1[ones] : num1[ten * 10 + ones]);
-	    if (buf == warr[cix]) {
-		(*cix_in)++;
-		value = ten * 10 + ones;
-		return 0;
-	    }
-	}
-
-    /* this one too */
-    for (ten = 0; ten < 10; ten++)
-	for (ones = 0; ones < 10; ones++) {
-	    buf = (ones ? ord10[ten] : sord10[ten]) + (ten > 1 ? ord1[ones] : ord1[ten*10 + ones]);
-	    if (buf == warr[cix]) {
-		(*cix_in)++;
-		value = -(ten * 10 + ones);
-		return 0;
-	    }
-	}
+    ensure_number_lookups();
+    if (!undefinedp(cardinal_number_lookup[warr[cix]])) {
+	(*cix_in)++;
+	value = cardinal_number_lookup[warr[cix]];
+	return 0;
+    }
+    if (!undefinedp(ordinal_number_lookup[warr[cix]])) {
+	(*cix_in)++;
+	value = ordinal_number_lookup[warr[cix]];
+	return 0;
+    }
 
     return 1;
 }
