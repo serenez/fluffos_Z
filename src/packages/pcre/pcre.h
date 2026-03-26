@@ -18,6 +18,7 @@ The maximum number of capturing groups is:
 
 typedef struct {
   pcre *re;
+  pcre_extra *extra;
   const char *error;
   const char *pattern;
   const char *subject;
@@ -32,13 +33,15 @@ typedef struct {
   int *ovector;
   int ovecsize;
   int rc;
-  /* EXTRA */
+  int jit_enabled;
 } pcre_t;
 
 struct pcre_cache_bucket_t {
   pcre *compiled_pattern;  // value1
+  pcre_extra *study_data;
   const char *pattern;     // key
   int compile_flags;       // compile options used
+  int jit_enabled;
   int size;                // size in bytes
   struct pcre_cache_bucket_t *next;
 };

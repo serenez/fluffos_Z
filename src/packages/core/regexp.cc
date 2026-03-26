@@ -59,6 +59,107 @@
 
 #include "packages/core/ed.h"
 
+namespace {
+enum { REGEXP_CACHE_SIZE = 64, REGEXP_CACHE_MAX_ENTRIES = 256 };
+
+struct regexp_cache_entry_t {
+  regexp *compiled_pattern;
+  const char *pattern;
+  int excompat;
+  regexp_cache_entry_t *next;
+};
+
+regexp_cache_entry_t *regexp_cache[REGEXP_CACHE_SIZE] = {nullptr};
+int regexp_cache_entries = 0;
+
+unsigned int regexp_cache_bucket_for(const char *pattern, int excompat) {
+  return (whashstr(pattern) ^ excompat) % REGEXP_CACHE_SIZE;
+}
+
+regexp *regexp_get_cached_pattern(const char *pattern, int excompat) {
+  const char *shared_pattern = make_shared_string(pattern);
+  const unsigned int bucket = regexp_cache_bucket_for(shared_pattern, excompat);
+  regexp_cache_entry_t *entry = regexp_cache[bucket];
+  regexp_cache_entry_t *prev = nullptr;
+
+  while (entry) {
+    if (entry->pattern == shared_pattern && entry->excompat == excompat) {
+      if (prev) {
+        prev->next = entry->next;
+        entry->next = regexp_cache[bucket];
+        regexp_cache[bucket] = entry;
+      }
+      free_string(shared_pattern);
+      return entry->compiled_pattern;
+    }
+    prev = entry;
+    entry = entry->next;
+  }
+
+  free_string(shared_pattern);
+  return nullptr;
+}
+
+void regexp_cache_pattern(regexp *compiled, const char *pattern, int excompat) {
+  const char *shared_pattern = make_shared_string(pattern);
+  const unsigned int bucket = regexp_cache_bucket_for(shared_pattern, excompat);
+  regexp_cache_entry_t *entry = regexp_cache[bucket];
+
+  while (entry) {
+    if (entry->pattern == shared_pattern && entry->excompat == excompat) {
+      FREE(reinterpret_cast<char *>(entry->compiled_pattern));
+      entry->compiled_pattern = compiled;
+      free_string(shared_pattern);
+      return;
+    }
+    entry = entry->next;
+  }
+
+  if (regexp_cache_entries >= REGEXP_CACHE_MAX_ENTRIES) {
+    regexp_cache_entry_t *tail = regexp_cache[bucket];
+    regexp_cache_entry_t *prev = nullptr;
+
+    if (tail) {
+      while (tail->next) {
+        prev = tail;
+        tail = tail->next;
+      }
+      if (prev) {
+        prev->next = nullptr;
+      } else {
+        regexp_cache[bucket] = nullptr;
+      }
+      FREE(reinterpret_cast<char *>(tail->compiled_pattern));
+      free_string(tail->pattern);
+      FREE(tail);
+    }
+  } else {
+    regexp_cache_entries++;
+  }
+
+  entry = reinterpret_cast<regexp_cache_entry_t *>(
+      DCALLOC(1, sizeof(regexp_cache_entry_t), TAG_TEMPORARY, "regexp cache entry"));
+  entry->compiled_pattern = compiled;
+  entry->pattern = shared_pattern;
+  entry->excompat = excompat;
+  entry->next = regexp_cache[bucket];
+  regexp_cache[bucket] = entry;
+}
+
+regexp *regexp_compile_cached(const char *pattern, int excompat) {
+  regexp *compiled = regexp_get_cached_pattern(pattern, excompat);
+  if (compiled) {
+    return compiled;
+  }
+
+  compiled = regcomp(reinterpret_cast<unsigned char *>(const_cast<char *>(pattern)), excompat);
+  if (compiled) {
+    regexp_cache_pattern(compiled, pattern, excompat);
+  }
+  return compiled;
+}
+}  // namespace
+
 /*
  * The "internal use only" fields in regexp.h are present to pass info from
  * compile to execute that permits the execute phase to run lots faster on
@@ -1404,12 +1505,11 @@ int match_single_regexp(const char *str, const char *pattern) {
   int ret;
 
   regexp_user = EFUN_REGEXP;
-  reg = regcomp((unsigned char *)pattern, 0);
+  reg = regexp_compile_cached(pattern, 0);
   if (!reg) {
     error(regexp_error);
   }
   ret = regexec(reg, str);
-  FREE(reg);
   return ret;
 }
 
@@ -1460,11 +1560,8 @@ array_t *reg_assoc(svalue_t *str, array_t *pat, array_t *tok, svalue_t *def) {
     rgpp = reinterpret_cast<struct regexp **>(
         DCALLOC(size, sizeof(struct regexp *), TAG_TEMPORARY, "reg_assoc : rgpp"));
     for (i = 0; i < size; i++) {
-      if (!(rgpp[i] = regcomp((unsigned char *)pat->item[i].u.string, 0))) {
-        while (i--) {
-          FREE((char *)rgpp[i]);
-        }
-        FREE((char *)rgpp);
+      if (!(rgpp[i] = regexp_compile_cached(pat->item[i].u.string, 0))) {
+        FREE(reinterpret_cast<char *>(rgpp));
         free_empty_array(ret);
         error(regexp_error);
       }
@@ -1562,10 +1659,7 @@ array_t *reg_assoc(svalue_t *str, array_t *pat, array_t *tok, svalue_t *def) {
     sv1->subtype = STRING_MALLOC;
     sv1->u.string = string_copy(tmp, "reg_assoc");
     assign_svalue_no_free(sv2, def);
-    for (i = 0; i < size; i++) {
-      FREE((char *)rgpp[i]);
-    }
-    FREE((char *)rgpp);
+    FREE(reinterpret_cast<char *>(rgpp));
 
     while ((rmp = rmph)) {
       rmph = rmp->next;
@@ -1597,7 +1691,7 @@ array_t *match_regexp(array_t *v, const char *pattern, int flag) {
   if (!(size = v->size)) {
     return &the_null_array;
   }
-  reg = regcomp((unsigned char *)pattern, 0);
+  reg = regexp_compile_cached(pattern, 0);
   if (!reg) {
     error(regexp_error);
   }
@@ -1637,6 +1731,5 @@ array_t *match_regexp(array_t *v, const char *pattern, int flag) {
     }
   }
   FREE(res);
-  FREE((char *)reg);
   return ret;
 }

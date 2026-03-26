@@ -258,6 +258,180 @@
 
 - 位置：
   - `src/packages/pcre/pcre.cc:406`
+
+---
+
+## 4. 2026-03-26 本轮修复落地结果
+
+下面这一节记录的是已经真正落地到驱动代码里的修改，不再是“建议”
+状态。
+
+### FIX-01 `deep_inventory()` 改为单遍迭代扫描
+
+- 修改位置：
+  - `src/vm/internal/base/array.cc`
+- 实际改法：
+  - 删除原先的 `deep_inventory_count()` + `deep_inventory_collect()` 双遍递归。
+  - 改成显式 `std::vector<object_t *>` 栈做单遍迭代遍历。
+  - 在收集到对象时立即加引用，避免 function pointer 回调期间对象被析构后
+    结果数组悬空。
+- 语义保持：
+  - 保留隐藏对象规则。
+  - 保留 function pointer 的 `1 / 2 / 3` 返回值语义。
+  - 保留 `take_top` 行为。
+- 结果：
+  - 去掉整棵树固定双遍扫描。
+  - 去掉递归深度带来的栈风险。
+
+### FIX-02 `present()` / `object_present2()` 去掉“每候选重复构造字符串”
+
+- 修改位置：
+  - `src/vm/internal/simulate.cc`
+- 实际改法：
+  - 把待匹配名字预先构造成一个可复用的 `svalue_t`。
+  - 在 inventory 遍历过程中复用这一个参数对象，不再对每个候选重复
+    `new_string()`。
+- 语义保持：
+  - 仍然按原顺序逐个调用 `id()`。
+  - 仍然支持 `"name 2"` 这种编号匹配。
+- 结果：
+  - 去掉最明显的热路径分配放大点。
+  - 不碰 mudlib `id()` 动态语义。
+
+### FIX-03 `livings()` 改为专用命令对象链表；`objects()` 增加无过滤快路径
+
+- 修改位置：
+  - `src/packages/core/add_action.cc`
+  - `src/packages/core/add_action.h`
+  - `src/vm/internal/base/object.h`
+  - `src/vm/internal/base/array.cc`
+  - `src/vm/internal/simulate.cc`
+- 实际改法：
+  - 给 `enable_commands()` 对象维护一条专用双向链表。
+  - `livings()` 直接遍历这条链表，不再每次全扫 `obj_list`。
+  - `objects()` 在“无回调、无过滤”这一最常见路径上，直接单遍填充结果，
+    不再先做临时快照数组。
+- 语义保持：
+  - 不改变 `enable_commands()` / `disable_commands()` 行为。
+  - 对象析构时同步把节点从链表移除。
+  - 回调版 `objects()` 仍保留原快照路径，避免回调期间对象链变化带来语义
+    偏差。
+- 结果：
+  - `livings()` 从“全对象扫描”降为“仅命令对象扫描”。
+  - `objects()` 常见无过滤场景减少一次额外内存分配与复制。
+
+### FIX-04 `match_path()` 去掉逐级堆缓冲构造
+
+- 修改位置：
+  - `src/packages/core/efuns_main.cc`
+- 实际改法：
+  - 改成先规范化路径一次，再从长前缀向短前缀回退查找。
+  - 使用 `std::string` 原地临时截断，而不是手工逐步拼前缀缓冲区。
+- 语义保持：
+  - 仍然优先精确匹配。
+  - 仍然按最长匹配前缀返回。
+- 结果：
+  - 减少路径层级越深时的重复构造成本。
+
+### FIX-05 `read_file()` 为普通文件增加正向流式快路径
+
+- 修改位置：
+  - `src/packages/core/file.cc`
+- 实际改法：
+  - 新增普通文件快速路径：当 `start > 0` 且文件不是 gzip 时，按块流式读入，
+    只从目标起始行开始拼接结果。
+  - gzip 文件、负数起始行等仍保留旧的大缓冲兼容路径。
+  - 统一补了 CRLF 归一化，避免 Windows 文本行尾在返回值里反复产生额外
+    处理。
+- 语义保持：
+  - 保留 `read_file()` 对 gzip 文件的兼容行为。
+  - 保留 `start/lines` 的原有意义。
+- 结果：
+  - 对“只取后半段几行”的普通文本文件，避免先整段读完再线性跳过前缀。
+
+### FIX-06 内置 `regexp()` / `reg_assoc()` 增加编译结果缓存
+
+- 修改位置：
+  - `src/packages/core/regexp.cc`
+- 实际改法：
+  - 增加小型正则缓存表，按 `pattern + excompat` 复用编译后的 regexp。
+  - `regexp()`、`match_regexp()`、`reg_assoc()` 改为先查缓存，再决定是否
+    `regcomp()`。
+- 语义保持：
+  - 不改旧正则引擎的匹配语义。
+  - 不强推 mudlib 改用别的接口。
+- 结果：
+  - 把热路径上的“现编现跑”改成“多数情况下直接复用已编译结果”。
+
+### FIX-07 `pcre_*` 缓存补上 `study/JIT` 预处理信息
+
+- 修改位置：
+  - `src/packages/pcre/pcre.cc`
+  - `src/packages/pcre/pcre.h`
+- 实际改法：
+  - 扩展缓存桶，除了保存 `compiled_pattern`，还保存 `study_data` 和
+    `jit_enabled`。
+  - 命中缓存时直接复用 `pcre_extra`。
+  - 首次编译后执行 `pcre_study()`，为后续高频执行预热。
+- 语义保持：
+  - 不更换 regex 引擎，不升级到 PCRE2。
+  - 仍然维持现有 `pcre_*` efun 接口和返回值。
+- 结果：
+  - 高频相同模式执行时，减少重复准备成本。
+
+### FIX-08 `parse_command` 去掉 `find_string()` 的重复拆词
+
+- 修改位置：
+  - `src/packages/ops/parse.cc`
+- 实际改法：
+  - `find_string()` 不再对每个多词短语反复 `explode_string()`。
+  - 改成直接逐词和命令词数组比对。
+  - `member_string()` 增加首字符和长度的快速过滤，减少无效 `strcmp()`。
+- 语义保持：
+  - 多词 id 的匹配顺序与返回行为保持不变。
+  - 不改 `parse_command` 的历史兼容语义。
+- 结果：
+  - 去掉解析热路径里最显眼的重复拆分与无差别字符串比较。
+
+### FIX-09 `terminal_colour()` 无钩子时不再每段都 `apply()`
+
+- 修改位置：
+  - `src/packages/contrib/contrib.cc`
+- 实际改法：
+  - 先检测当前对象是否实现 `terminal_colour_replace` 钩子。
+  - 如果没有，就完全跳过逐段 `copy_and_push_string()` + `apply()`。
+- 语义保持：
+  - 实现了钩子的对象仍按原逻辑处理。
+  - 未实现钩子的对象不再为空转进入 LPC。
+- 结果：
+  - 大段彩色文本渲染时，去掉了一整条“本来什么都不会发生”的 LPC 调用链。
+
+### FIX-10 本轮明确不做的事
+
+- 不修改 mudlib。
+- 不把 mudlib 调用量当作驱动改造优先级的唯一依据。
+- 不把单线程驱动强行改成多 worker 并发模型。
+- 不做 PCRE2 升级和正则语义替换。
+
+---
+
+## 5. 验证结果
+
+- 构建：
+  - `C:\\msys64\\mingw64\\bin\\cmake.exe --build build_codex_review_fix --parallel 4`
+- 测试：
+  - `C:\\msys64\\mingw64\\bin\\ctest.exe --test-dir build_codex_review_fix --output-on-failure -j 1`
+- 结果：
+  - 编译通过
+  - `46/46` 测试全部通过
+
+---
+
+## 6. 最终结论
+
+本轮不是只补了一个点，而是把此前这批 LPC 运行期热点里，已经识别出的
+驱动侧问题全部落到了代码上，并且保持了“单线程驱动、LPC 回调语义不变”
+这个边界。
   - `src/packages/pcre/pcre.cc:431`
   - `src/packages/pcre/pcre.cc:436`
   - `src/packages/pcre/pcre.cc:474`

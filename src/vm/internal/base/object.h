@@ -100,6 +100,8 @@ struct object_t {
 #ifndef NO_ADD_ACTION
   sentence_t *sent;
   struct object_t *next_hashed_living;
+  struct object_t *next_cmd;
+  struct object_t *prev_cmd;
   const char *living_name; /* Name of living object if in hash */
 #endif
 #ifdef PACKAGE_UIDS

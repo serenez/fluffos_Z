@@ -52,6 +52,73 @@ title: driver 提交记录
 - 补充 docs/audit/full_code_audit_2026_03_25.md，回写本轮修复结论和验证结果
 ```
 
+### 2026-03-26 10:04
+
+**提交号**
+
+`fb259546`
+
+**标题**
+
+`perf(driver): 优化驱动热点路径并补充完整审计记录`
+
+**提交信息**
+
+```text
+本次提交包含以下内容：
+1. 修复上一轮性能审计中确认的驱动热点问题，保持单线程驱动语义不变，不把异步模型错误扩展为多线程并发。
+2. 优化日志输出、telnet 协商输出、异步目录扫描、数据库句柄锁粒度、配置解析、命令解析和 myutil 清理路径，降低高频调用下的额外分配、重复扫描和不必要串行阻塞。
+3. 更新 parse_command 兼容层与相关实现，补充对 LPC 运行期热点路径的进一步分析。
+4. 新增并整理多份审计文档，分别记录全量问题、性能问题和 LPC 运行期热点分析，便于后续按条目继续推进。
+5. 同步更新已有审计记录和维护日志，保留问题来源、影响范围、修复方向和验证结论。
+
+本次提交涉及的主要范围：
+- 驱动性能修复：log、comm、telnet、async、db、file、parse、myutil 等核心路径
+- 审计文档补充：full_code_audit、performance_audit、lpc_runtime_hotpath_analysis
+- 维护记录更新：maintenance_journal
+
+验证情况：
+- 已基于此前构建目录完成编译与测试验证，上一轮确认 46/46 测试通过。
+- 本次提交主要是对已确认修改与新增审计文档进行归档提交。
+```
+
+### 2026-03-26 11:12
+
+**提交号**
+
+`当前提交（提交号见 git log）`
+
+**标题**
+
+`perf(driver): 修复 LPC 运行期热点路径并更新维护记录`
+
+**提交信息**
+
+```text
+修复内容：
+- 重写 src/vm/internal/base/array.cc 的 deep_inventory() / deep_inventory_array()，去掉原先 count + collect 的双遍递归，改为单遍迭代扫描，并在 livings() 上引入命令对象链表、为 objects() 增加无过滤快路径。
+- 在 src/packages/core/add_action.cc、src/packages/core/add_action.h、src/vm/internal/base/object.h、src/vm/internal/simulate.cc 中维护 command_enabled_list 与对象析构清理逻辑，同时让 object_present2() 复用查找字符串，去掉 inventory 扫描中“每候选一次 new_string()”的额外分配。
+- 调整 src/packages/core/efuns_main.cc 的 match_path()，改为规范化路径后从长前缀向短前缀回退匹配，减少逐级构造临时路径缓冲的成本。
+- 重写 src/packages/core/file.cc 的 read_file() 普通文件正向读取路径，新增非 gzip 文件的流式快路径，并统一 CRLF 归一化与切片逻辑，降低“只取后半段几行”时的无效扫描。
+- 为 src/packages/core/regexp.cc 增加旧 regexp 编译缓存；为 src/packages/pcre/pcre.cc 与 src/packages/pcre/pcre.h 扩展 pcre 缓存桶，保存 compiled_pattern、study_data 与 jit_enabled，补上 pcre_study() 结果复用。
+- 优化 src/packages/ops/parse.cc 的 parse_command 热点，去掉 find_string() 中对多词短语的重复 explode_string()，并为 member_string() 增加首字符和长度过滤，降低解析链路里的无效 strcmp()。
+- 调整 src/packages/contrib/contrib.cc 的 terminal_colour()，在当前对象没有 terminal_colour_replace 钩子时直接跳过逐段 apply()，避免大段彩色文本渲染时的空转 LPC 调用。
+
+文档更新：
+- 更新 docs/audit/lpc_runtime_hotpath_analysis_2026_03_26.md，补充本轮每个热点的最终改法、边界约束、验证结果和不做项。
+- 新增 docs/audit/24xinduobao_hotpath_validation_2026_03_26.md，保留 mudlib 调用样本验证，并明确它只作为 LPC 语义参照，不参与驱动优先级判断，也不纳入本轮改造范围。
+- 更新 docs/driver/maintenance_journal.md，回填 2026-03-26 10:04 的性能提交记录，并补入本次提交记录。
+
+边界说明：
+- 本次修改全部发生在驱动侧，不修改业务 mudlib。
+- 保持单线程驱动边界，不把异步调用扩展成多 worker 并发模型。
+- 不改变 LPC 回调、隐藏对象、正则接口和 parse_command 的既有兼容语义。
+
+验证记录：
+- 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\cmake.exe --build build_codex_review_fix --parallel 4，编译通过。
+- 使用 MSYS2 MINGW64 执行 C:\msys64\mingw64\bin\ctest.exe --test-dir build_codex_review_fix --output-on-failure -j 1，结果 46/46 全通过。
+```
+
 ### 2026-03-26 00:04
 
 **提交号**

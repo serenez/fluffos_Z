@@ -549,6 +549,7 @@ void f_terminal_colour() {
   int fillout = 0;
   char *rep;
   int repused;
+  int has_colour_replace = current_object && function_exists(APPLY_TERMINAL_COLOUR_REPLACE, current_object, 1);
 
   if (st_num_arg >= 3) {
     if (st_num_arg == 4) {
@@ -701,12 +702,17 @@ void f_terminal_colour() {
   for (j = i = 0, k = sp->u.map->table_size; i < num; i++) {
     // Look it up in the mapping.
     repused = 0;
-    copy_and_push_string(parts[i]);
-    svalue_t *reptmp = apply(APPLY_TERMINAL_COLOUR_REPLACE, current_object, 1, ORIGIN_EFUN);
-    if (reptmp && reptmp->type == T_STRING) {
-      rep = reinterpret_cast<char *>(alloca(SVALUE_STRLEN(reptmp) + 1));
-      strcpy(rep, reptmp->u.string);
-      repused = 1;
+    svalue_t *reptmp = nullptr;
+    if (has_colour_replace) {
+      copy_and_push_string(parts[i]);
+      reptmp = apply(APPLY_TERMINAL_COLOUR_REPLACE, current_object, 1, ORIGIN_EFUN);
+      if (!reptmp || (current_object->flags & O_DESTRUCTED)) {
+        has_colour_replace = 0;
+      } else if (reptmp->type == T_STRING) {
+        rep = reinterpret_cast<char *>(alloca(SVALUE_STRLEN(reptmp) + 1));
+        strcpy(rep, reptmp->u.string);
+        repused = 1;
+      }
     }
 
     if ((repused && (cp = findstring(rep))) || (!repused && (cp = findstring(parts[i])))) {

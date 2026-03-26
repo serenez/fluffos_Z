@@ -319,6 +319,43 @@ static int member_string(const char * /*str*/, array_t * /*sarr*/);
 static const char *parse_to_plural(const char * /*str*/);
 static const char *parse_one_plural(const char * /*str*/);
 
+static bool phrase_matches_words(const char *phrase, array_t *warr, int start_index, int *end_index) {
+  const char *word = phrase;
+  int index = start_index;
+
+  while (*word == ' ') {
+    word++;
+  }
+
+  while (*word) {
+    const char *next_sep = strchr(word, ' ');
+    const size_t word_len = next_sep ? static_cast<size_t>(next_sep - word) : strlen(word);
+
+    if (index >= warr->size) {
+      return false;
+    }
+
+    const char *candidate = warr->item[index].u.string;
+    if (strlen(candidate) != word_len || strncmp(candidate, word, word_len) != 0) {
+      return false;
+    }
+
+    index++;
+    if (!next_sep) {
+      *end_index = index;
+      return true;
+    }
+
+    word = next_sep + 1;
+    while (*word == ' ') {
+      word++;
+    }
+  }
+
+  *end_index = index;
+  return true;
+}
+
 /*
  * Function name:       load_lpc_info
  * Description:         Loads relevant information from a given object.
@@ -1322,8 +1359,8 @@ static int match_object(int obix, array_t *warr, int *cix_in, int *plur) {
  */
 static int find_string(const char *str, array_t *warr, int *cix_in) {
   int fpos;
+  int end_index = 0;
   const char *p1, *p2;
-  array_t *split;
 
   for (; *cix_in < warr->size; (*cix_in)++) {
     p1 = warr->item[*cix_in].u.string;
@@ -1346,36 +1383,13 @@ static int find_string(const char *str, array_t *warr, int *cix_in) {
       continue;
     }
 
-    split = explode_string(str, strlen(str), " ", 1, false);
-
-    /*
-     * warr->size - *cix_in ==
-     * 2: One extra word
-     * 3: Two extra words
-     */
-    if (!split || (split->size > (warr->size - *cix_in))) {
-      if (split) {
-        free_array(split);
-      }
+    if (!phrase_matches_words(str, warr, *cix_in, &end_index)) {
       continue;
     }
-    fpos = *cix_in;
-    for (; (*cix_in - fpos) < split->size; (*cix_in)++) {
-      if (strcmp(split->item[*cix_in - fpos].u.string, warr->item[*cix_in].u.string) != 0) {
-        break;
-      }
-    }
-    if ((*cix_in - fpos) == split->size) {
-      if (split) {
-        free_array(split);
-      }
-      return fpos;
-    }
 
-    if (split) {
-      free_array(split);
-    }
-    *cix_in = fpos;
+    fpos = *cix_in;
+    *cix_in = end_index;
+    return fpos;
   }
   return -1;
 }
@@ -1473,6 +1487,8 @@ static int check_adjectiv(int obix, array_t *warr, int from, int to) {
  */
 static int member_string(const char *str, array_t *sarr) {
   int il;
+  const size_t str_len = strlen(str);
+  const char first = str[0];
 
   if (!sarr) {
     return -1;
@@ -1483,7 +1499,12 @@ static int member_string(const char *str, array_t *sarr) {
       continue;
     }
 
-    if (strcmp(sarr->item[il].u.string, str) == 0) {
+    const char *candidate = sarr->item[il].u.string;
+    if (candidate[0] != first || strlen(candidate) != str_len) {
+      continue;
+    }
+
+    if (strcmp(candidate, str) == 0) {
       return il;
     }
   }

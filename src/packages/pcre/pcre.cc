@@ -71,7 +71,10 @@
 // Prototype declarations
 static void pcre_free_memory(pcre_t *p);
 static pcre *pcre_local_compile(pcre_t *p);
+static void pcre_free_study_data(pcre_extra *extra);
+static pcre_extra *pcre_local_study(pcre_t *p);
 static int pcre_local_exec(pcre_t *p);
+static int pcre_prepare(pcre_t *p);
 static int pcre_magic(pcre_t *p);
 static int pcre_query_match(pcre_t *p);
 static inline int compute_compile_options(int flags);
@@ -82,8 +85,10 @@ static array_t *pcre_assoc(svalue_t *str, array_t *pat, array_t *tok, svalue_t *
 static char *pcre_get_replace(pcre_t *run, array_t *replacements);
 static array_t *pcre_get_substrings(pcre_t *run, bool include_names);
 // Caching functions
-static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat, const char *pattern, int compile_flags);
-static pcre *pcre_get_cached_pattern(struct pcre_cache_t *table, const char *pattern, int compile_flags);
+static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat, pcre_extra *extra,
+                              const char *pattern, int compile_flags, int jit_enabled);
+static pcre_cache_bucket_t *pcre_get_cached_pattern(struct pcre_cache_t *table, const char *pattern,
+                                                    int compile_flags);
 static mapping_t *pcre_get_cache();
 int pcrecachesize = 0;
 // Globals
@@ -409,9 +414,41 @@ static pcre *pcre_local_compile(pcre_t *p) {
   return p->re;
 }
 
+static void pcre_free_study_data(pcre_extra *extra) {
+  if (extra != nullptr) {
+    pcre_free_study(extra);
+  }
+}
+
+static pcre_extra *pcre_local_study(pcre_t *p) {
+  const char *study_error = nullptr;
+  int study_flags = 0;
+
+#ifdef PCRE_STUDY_JIT_COMPILE
+  study_flags |= PCRE_STUDY_JIT_COMPILE;
+#endif
+
+  p->extra = pcre_study(p->re, study_flags, &study_error);
+  p->jit_enabled = 0;
+  if (study_error != nullptr) {
+    p->error = study_error;
+    return nullptr;
+  }
+
+#ifdef PCRE_CONFIG_JIT
+  if (p->extra != nullptr) {
+    int jit = 0;
+    pcre_fullinfo(p->re, p->extra, PCRE_INFO_JIT, &jit);
+    p->jit_enabled = jit;
+  }
+#endif
+
+  return p->extra;
+}
+
 static int pcre_local_exec(pcre_t *p) {
   int capture_count = 0;
-  pcre_fullinfo(p->re, nullptr, PCRE_INFO_CAPTURECOUNT, &capture_count);
+  pcre_fullinfo(p->re, p->extra, PCRE_INFO_CAPTURECOUNT, &capture_count);
   capture_count += 2;
   capture_count *= 3;
   if (p->ovector) {
@@ -424,32 +461,42 @@ static int pcre_local_exec(pcre_t *p) {
   p->namecount = 0;
   p->name_entry_size = 0;
   p->name_table = nullptr;
-  pcre_fullinfo(p->re, nullptr, PCRE_INFO_NAMECOUNT, &p->namecount);
-  pcre_fullinfo(p->re, nullptr, PCRE_INFO_NAMEENTRYSIZE, &p->name_entry_size);
-  pcre_fullinfo(p->re, nullptr, PCRE_INFO_NAMETABLE, &p->name_table);
+  pcre_fullinfo(p->re, p->extra, PCRE_INFO_NAMECOUNT, &p->namecount);
+  pcre_fullinfo(p->re, p->extra, PCRE_INFO_NAMEENTRYSIZE, &p->name_entry_size);
+  pcre_fullinfo(p->re, p->extra, PCRE_INFO_NAMETABLE, &p->name_table);
 
-  p->rc = pcre_exec(p->re, nullptr, p->subject, p->s_length, 0, p->exec_flags, p->ovector, capture_count);
+  p->rc = pcre_exec(p->re, p->extra, p->subject, p->s_length, 0, p->exec_flags, p->ovector,
+                    capture_count);
 
   return p->rc;
 }
 
-static int pcre_magic(pcre_t *p) {
-  p->re = pcre_get_cached_pattern(&pcre_cache, p->pattern, p->compile_flags);
-
-  if (p->re == nullptr) {
+static int pcre_prepare(pcre_t *p) {
+  if (auto *cached = pcre_get_cached_pattern(&pcre_cache, p->pattern, p->compile_flags)) {
+    p->re = cached->compiled_pattern;
+    p->extra = cached->study_data;
+    p->jit_enabled = cached->jit_enabled;
+  } else {
     pcre_local_compile(p);
-    pcre_cache_pattern(&pcre_cache, p->re, p->pattern, p->compile_flags);
+    if (p->re != nullptr) {
+      pcre_local_study(p);
+      pcre_cache_pattern(&pcre_cache, p->re, p->extra, p->pattern, p->compile_flags,
+                         p->jit_enabled);
+    }
   }
 
   if (p->re == nullptr) {
     return -1;
   }
 
-  /* Add support for studied patterns here */
-  // if(p->study && !found)
-  // {
+  return 1;
+}
 
-  // }
+static int pcre_magic(pcre_t *p) {
+  if (pcre_prepare(p) < 0) {
+    return -1;
+  }
+
   pcre_local_exec(p);
 
   return 1;
@@ -471,20 +518,13 @@ auto pcre_match_all(const char *subject, size_t subject_len, const char *pattern
 
   DEFER { pcre_free_memory(run); };
 
-  run->re = pcre_get_cached_pattern(&pcre_cache, run->pattern, run->compile_flags);
-
-  if (run->re == nullptr) {
-    pcre_local_compile(run);
-    pcre_cache_pattern(&pcre_cache, run->re, run->pattern, run->compile_flags);
-  }
-
-  if (run->re == nullptr) {
+  if (pcre_prepare(run) < 0) {
     error("PCRE compilation failed at offset %d: %s\n", run->erroffset, run->error);
   }
 
   {
     int size = 0;
-    pcre_fullinfo(run->re, nullptr, PCRE_INFO_CAPTURECOUNT, &size);
+    pcre_fullinfo(run->re, run->extra, PCRE_INFO_CAPTURECOUNT, &size);
     size += 2;
     size *= 3;
     if (run->ovector) {
@@ -499,8 +539,9 @@ auto pcre_match_all(const char *subject, size_t subject_len, const char *pattern
 
   int rc = 0;
   int offset = 0;
-  while (offset < run->s_length && (rc = pcre_exec(run->re, nullptr, run->subject, run->s_length,
-                                                   offset, run->exec_flags, run->ovector, run->ovecsize)) >= 0) {
+  while (offset < run->s_length &&
+         (rc = pcre_exec(run->re, run->extra, run->subject, run->s_length, offset, run->exec_flags,
+                         run->ovector, run->ovecsize)) >= 0) {
     std::vector<svalue_t> match;
     for (int i = 0; i < rc; ++i) {
       unsigned int start, length;
@@ -517,7 +558,11 @@ auto pcre_match_all(const char *subject, size_t subject_len, const char *pattern
       match.push_back(item);
     }
     matches.push_back(match);
-    offset = run->ovector[1];
+    if (run->ovector[1] <= offset) {
+      offset++;
+    } else {
+      offset = run->ovector[1];
+    }
   }
 
   return matches;
@@ -565,19 +610,12 @@ static array_t *pcre_match(array_t *v, const char *pattern, int flag, int pcre_f
   run->compile_flags = compute_compile_options(pcre_flags);
   run->exec_flags = compute_exec_options(pcre_flags);
 
-  run->re = pcre_get_cached_pattern(&pcre_cache, run->pattern, run->compile_flags);
-
   DEFER { pcre_free_memory(run); };
 
-  if (run->re == nullptr) {
-    if (pcre_local_compile(run) == nullptr) {
-      const char *rerror = run->error;
-      int const offset = run->erroffset;
-
-      error("PCRE compilation failed at offset %d: %s\n", offset, rerror);
-    } else {
-      pcre_cache_pattern(&pcre_cache, run->re, run->pattern, run->compile_flags);
-    }
+  if (pcre_prepare(run) < 0) {
+    const char *rerror = run->error;
+    int const offset = run->erroffset;
+    error("PCRE compilation failed at offset %d: %s\n", offset, rerror);
   }
 
   res = (char *)DMALLOC(size, TAG_TEMPORARY, "prcre_match: res");
@@ -679,24 +717,18 @@ static array_t *pcre_assoc(svalue_t *str, array_t *pat, array_t *tok, svalue_t *
       rgpp[i]->pattern = pat->item[i].u.string;
       rgpp[i]->compile_flags = compute_compile_options(pcre_flags);
       rgpp[i]->exec_flags = compute_exec_options(pcre_flags);
-      rgpp[i]->re = pcre_get_cached_pattern(&pcre_cache, rgpp[i]->pattern, rgpp[i]->compile_flags);
+      if (pcre_prepare(rgpp[i]) < 0) {
+        const char *rerror = rgpp[i]->error;
+        int const offset = rgpp[i]->erroffset;
 
-      if (rgpp[i]->re == nullptr) {
-        if (pcre_local_compile(rgpp[i]) == nullptr) {
-          const char *rerror = rgpp[i]->error;
-          int const offset = rgpp[i]->erroffset;
-
+        pcre_free_memory(rgpp[i]);
+        while (i--) {
           pcre_free_memory(rgpp[i]);
-          while (i--) {
-            pcre_free_memory(rgpp[i]);
-          }
-
-          FREE(rgpp);
-          free_empty_array(ret);
-          error("PCRE compilation failed at offset %d: %s\n", offset, rerror);
-        } else {
-          pcre_cache_pattern(&pcre_cache, rgpp[i]->re, rgpp[i]->pattern, rgpp[i]->compile_flags);
         }
+
+        FREE(rgpp);
+        free_empty_array(ret);
+        error("PCRE compilation failed at offset %d: %s\n", offset, rerror);
       }
     }
 
@@ -974,8 +1006,9 @@ static void pcre_free_memory(pcre_t *p) {
 
 // Caching functions, add new ones at the front of the bucket so we find them
 // faster
-static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat,
-                              const char *pattern, int compile_flags)  // must be shared string
+static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat, pcre_extra *extra,
+                              const char *pattern, int compile_flags,
+                              int jit_enabled)  // must be shared string
 {
   const auto *shared_pattern = make_shared_string(pattern);
   unsigned int const bucket = (HASH(BLOCK(shared_pattern)) ^ compile_flags) % PCRE_CACHE_SIZE;
@@ -1001,6 +1034,7 @@ static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat,
   if (tmp) {
     // does this even make sense? same pattern will always compile the same way?
     pcre_free(tmp->compiled_pattern);
+    pcre_free_study_data(tmp->study_data);
     node = tmp;
   } else {
     node = (struct pcre_cache_bucket_t *)DCALLOC(1, sizeof(struct pcre_cache_bucket_t),
@@ -1018,6 +1052,7 @@ static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat,
         if (tmp == table->buckets[bucket]) {  // if the hash version works, most
                                               // of the time
           pcre_free(tmp->compiled_pattern);
+          pcre_free_study_data(tmp->study_data);
           free_string(tmp->pattern);
           FREE(tmp);
           table->buckets[bucket] = nullptr;
@@ -1028,6 +1063,7 @@ static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat,
             tmp2 = tmp2->next;  // shouldn't get here often
           }
           pcre_free(tmp->compiled_pattern);
+          pcre_free_study_data(tmp->study_data);
           free_string(tmp->pattern);
           FREE(tmp);
           tmp2->next = nullptr;
@@ -1041,12 +1077,15 @@ static int pcre_cache_pattern(struct pcre_cache_t *table, pcre *cpat,
   node->pattern = shared_pattern;
   node->compile_flags = compile_flags;
   node->compiled_pattern = cpat;
+  node->study_data = extra;
+  node->jit_enabled = jit_enabled;
   node->size = sz;
 
   return 0;
 }
 
-static pcre *pcre_get_cached_pattern(struct pcre_cache_t *table, const char *pattern, int compile_flags) {
+static pcre_cache_bucket_t *pcre_get_cached_pattern(struct pcre_cache_t *table, const char *pattern,
+                                                    int compile_flags) {
   const auto *shared_pattern = make_shared_string(pattern);
   unsigned int const bucket = (HASH(BLOCK(shared_pattern)) ^ compile_flags) % PCRE_CACHE_SIZE;
   struct pcre_cache_bucket_t *node;
@@ -1062,7 +1101,7 @@ static pcre *pcre_get_cached_pattern(struct pcre_cache_t *table, const char *pat
         table->buckets[bucket] = node;
       }
       free_string(shared_pattern);
-      return node->compiled_pattern;
+      return node;
     }
     lnode = node;
     node = node->next;

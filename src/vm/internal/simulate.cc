@@ -755,6 +755,7 @@ object_t *object_present(svalue_t *v, object_t *ob) {
 // object that id("xx") returns true.
 static object_t *object_present2(const char *str, object_t *ob) {
   svalue_t *ret;
+  svalue_t search_name = {};
 
   const char *name = nullptr;
   int namelen = 0, count = 0;
@@ -779,14 +780,18 @@ static object_t *object_present2(const char *str, object_t *ob) {
     }
   }
 
+  search_name.type = T_STRING;
+  search_name.subtype = STRING_MALLOC;
+  search_name.u.string = new_string(namelen, "object_present2");
+  memcpy(const_cast<char *>(search_name.u.string), name, namelen);
+  const_cast<char *>(search_name.u.string)[namelen] = 0;
+
   for (; ob; ob = ob->next_inv) {
-    char *str_to_push = new_string(namelen, "object_present2");
-    memcpy(str_to_push, name, namelen);
-    str_to_push[namelen] = 0;
-    push_malloced_string(str_to_push);
+    push_svalue(&search_name);
 
     ret = apply(APPLY_ID, ob, 1, ORIGIN_DRIVER);
     if (ob->flags & O_DESTRUCTED) {
+      free_svalue(&search_name, "object_present2");
       return nullptr;
     }
     if (IS_ZERO(ret)) {
@@ -795,8 +800,10 @@ static object_t *object_present2(const char *str, object_t *ob) {
     if (--count > 0) {
       continue;
     }
+    free_svalue(&search_name, "object_present2");
     return ob;
   }
+  free_svalue(&search_name, "object_present2");
   return nullptr;
 }
 #endif
@@ -1056,6 +1063,9 @@ void destruct_object(object_t *ob) {
    }
    DEBUG_CHECK(!removed, "Failed to delete object.\n");//*/
 
+  if (ob->flags & O_ENABLE_COMMANDS) {
+    remove_command_enabled(ob);
+  }
   remove_living_name(ob);
 #ifndef NO_ENVIRONMENT
   ob->super = nullptr;

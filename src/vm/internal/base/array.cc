@@ -5,6 +5,7 @@
 #include <stdlib.h>  // for qsort
 #include <vector>
 
+#include "packages/core/add_action.h"
 #include "vm/internal/apply.h"
 #include "vm/internal/simulate.h"
 
@@ -1218,227 +1219,191 @@ void f_sort_array(void) {
 #ifndef NO_ENVIRONMENT
 static int valid_hide_flag;
 
-static int deep_inventory_count(object_t *ob) {
-  object_t *cur;
-  int cnt;
-
-  cnt = 0;
-
-  /* step through object's inventory and count visible objects */
-  for (cur = ob->contains; cur; cur = cur->next_inv) {
-#ifdef F_SET_HIDE
-    if (cur->flags & O_HIDDEN) {
-      if (!valid_hide_flag) valid_hide_flag = 1 + (valid_hide(current_object) ? 1 : 0);
-      if (valid_hide_flag & 2) {
-        cnt++;
-        cnt += deep_inventory_count(cur);
-      }
-    } else {
-#endif
-      cnt++;
-      cnt += deep_inventory_count(cur);
-#ifdef F_SET_HIDE
-    }
-#endif
+static void release_deep_inventory_refs(std::vector<object_t *> *items, const char *from) {
+  for (auto *item : *items) {
+    free_object(&item, from);
   }
-
-  return cnt;
+  items->clear();
 }
 
-static void deep_inventory_collect(object_t *ob, array_t *inv, int *i, int max, funptr_t *fp) {
-  object_t *cur, *next;
-  svalue_t *fp_result;
+static bool deep_inventory_should_visit(object_t *ob, funptr_t *fp, bool *include_object,
+                                        bool *descend_children) {
+  svalue_t *fp_result = nullptr;
 
-  /* step through object's inventory and look for visible objects */
-  for (cur = ob->contains; cur && *i < max; cur = next) {
-    next = cur->next_inv;
-    if (fp) {
-      push_object(cur);
-      fp_result = call_function_pointer(fp, 1);
-      if (!fp_result || (current_object->flags & O_DESTRUCTED)) {
-        *i = 0;
-        return;
-      }
+#ifdef F_SET_HIDE
+  if (ob->flags & O_HIDDEN) {
+    if (!valid_hide_flag) {
+      valid_hide_flag = 1 + (valid_hide(current_object) ? 1 : 0);
     }
-    if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number > 0 &&
-                !(cur->flags & O_DESTRUCTED))) {
-#ifdef F_SET_HIDE
-      if (cur->flags & O_HIDDEN) {
-        if (valid_hide_flag & 2) {
-          if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number != 3)) {
-            inv->item[*i].type = T_OBJECT;
-            inv->item[*i].u.ob = cur;
-            (*i)++;
-            add_ref(cur, "deep_inventory_collect");
-          }
-          if (!fp || (fp && fp_result->type == T_NUMBER &&
-                      (fp_result->u.number == 1 || fp_result->u.number == 3))) {
-            deep_inventory_collect(cur, inv, i, max, fp);
-          }
-        }
-      } else {
-#endif
-        if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number != 3)) {
-          inv->item[*i].type = T_OBJECT;
-          inv->item[*i].u.ob = cur;
-          (*i)++;
-          add_ref(cur, "deep_inventory_collect");
-        }
-        if (!fp || (fp && fp_result->type == T_NUMBER &&
-                    (fp_result->u.number == 1 || fp_result->u.number == 3))) {
-          deep_inventory_collect(cur, inv, i, max, fp);
-        }
-#ifdef F_SET_HIDE
-      }
-#endif
+    if (!(valid_hide_flag & 2)) {
+      *include_object = false;
+      *descend_children = false;
+      return true;
     }
   }
+#endif
+
+  if (fp) {
+    push_object(ob);
+    fp_result = call_function_pointer(fp, 1);
+    if (!fp_result || (current_object->flags & O_DESTRUCTED)) {
+      return false;
+    }
+  }
+
+  if (!fp) {
+    *include_object = true;
+    *descend_children = true;
+    return true;
+  }
+
+  if (!(fp_result->type == T_NUMBER && fp_result->u.number > 0 &&
+        !(ob->flags & O_DESTRUCTED))) {
+    *include_object = false;
+    *descend_children = false;
+    return true;
+  }
+
+  *include_object = (fp_result->u.number != 3);
+  *descend_children = (fp_result->u.number == 1 || fp_result->u.number == 3);
+  return true;
+}
+
+static bool deep_inventory_collect_iterative(object_t *ob, funptr_t *fp, std::vector<object_t *> *items,
+                                             int max_items) {
+  std::vector<object_t *> stack;
+  object_t *cur = ob ? ob->contains : nullptr;
+
+  while ((cur || !stack.empty()) && static_cast<int>(items->size()) < max_items) {
+    if (!cur) {
+      cur = stack.back();
+      stack.pop_back();
+      continue;
+    }
+
+    object_t *next = cur->next_inv;
+    bool include_object = false;
+    bool descend_children = false;
+
+    if (!deep_inventory_should_visit(cur, fp, &include_object, &descend_children)) {
+      return false;
+    }
+
+    if (next) {
+      stack.push_back(next);
+    }
+
+    if (include_object) {
+      add_ref(cur, "deep_inventory_collect_iterative");
+      items->push_back(cur);
+      if (static_cast<int>(items->size()) >= max_items) {
+        break;
+      }
+    }
+
+    if (descend_children && cur->contains) {
+      cur = cur->contains;
+    } else {
+      cur = nullptr;
+    }
+  }
+
+  return true;
+}
+
+static bool deep_inventory_add_top(object_t *ob, funptr_t *fp, std::vector<object_t *> *items,
+                                   int max_items) {
+  svalue_t *fp_result = nullptr;
+  bool include_object = true;
+  bool descend_children = true;
+
+  if (fp) {
+    push_object(ob);
+    fp_result = call_function_pointer(fp, 1);
+    if (!fp_result || (current_object->flags & O_DESTRUCTED)) {
+      return false;
+    }
+    if (!(fp_result->type == T_NUMBER && fp_result->u.number > 0 && !(ob->flags & O_DESTRUCTED))) {
+      include_object = false;
+      descend_children = false;
+    } else {
+      include_object = (fp_result->u.number != 3);
+      descend_children = (fp_result->u.number == 1 || fp_result->u.number == 3);
+    }
+  }
+
+  if (include_object && static_cast<int>(items->size()) < max_items) {
+    add_ref(ob, "deep_inventory");
+    items->push_back(ob);
+  }
+
+  if (!descend_children || static_cast<int>(items->size()) >= max_items) {
+    return true;
+  }
+
+  return deep_inventory_collect_iterative(ob, fp, items, max_items);
 }
 
 array_t *deep_inventory(object_t *ob, int take_top, funptr_t *fp) {
   auto max_array_size = CONFIG_INT(__MAX_ARRAY_SIZE__);
-
-  array_t *dinv;
-  int i, o;
-  svalue_t *fp_result;
+  std::vector<object_t *> collected;
 
   valid_hide_flag = 0;
+  collected.reserve(std::min(max_array_size, 128));
 
-  /*
-   * count visible objects in an object's inventory, and in their
-   * inventory, etc
-   */
-  i = deep_inventory_count(ob);
   if (take_top) {
-    i++;
-  }
-
-  if (i == 0) {
+    if (!deep_inventory_add_top(ob, fp, &collected, max_array_size)) {
+      release_deep_inventory_refs(&collected, "deep_inventory_abort");
+      return &the_null_array;
+    }
+  } else if (!deep_inventory_collect_iterative(ob, fp, &collected, max_array_size)) {
+    release_deep_inventory_refs(&collected, "deep_inventory_abort");
     return &the_null_array;
   }
 
-  if (i > max_array_size) {
-    i = max_array_size;
+  if (collected.empty()) {
+    return &the_null_array;
   }
 
-  /*
-   * allocate an array
-   */
-  dinv = int_allocate_array(o = i);
-  push_refed_array(dinv);
-  /*
-   * collect visible inventory objects recursively
-   */
-  if (take_top) {
-    if (fp) {
-      push_object(ob);
-      fp_result = call_function_pointer(fp, 1);
-      if (!fp_result || (current_object->flags & O_DESTRUCTED)) {
-        pop_stack();  // dinv
-        return &the_null_array;
-      }
-    }
-    if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number > 0 &&
-                !(ob->flags & O_DESTRUCTED))) {
-      if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number != 3)) {
-        dinv->item[0].type = T_OBJECT;
-        dinv->item[0].u.ob = ob;
-        add_ref(ob, "deep_inventory");
-        i = 1;
-      }
-      if (!fp || (fp && fp_result->type == T_NUMBER &&
-                  (fp_result->u.number == 1 || fp_result->u.number == 3))) {
-        deep_inventory_collect(ob, dinv, &i, o, fp);
-      }
-    }
-  } else {
-    i = 0;
-    deep_inventory_collect(ob, dinv, &i, o, fp);
+  auto *dinv = allocate_empty_array(collected.size());
+  for (int i = 0; i < dinv->size; i++) {
+    dinv->item[i].type = T_OBJECT;
+    dinv->item[i].u.ob = collected[i];
   }
-
-  // resize the array if we have filtered out values
-  if (fp && i < o) {
-    dinv = resize_array(dinv, i);
-  }
-  sp--;  // get dinv off the stack, but don't free it;
   return dinv;
 }
 
 array_t *deep_inventory_array(array_t *arr, int take_top, funptr_t *fp) {
   auto max_array_size = CONFIG_INT(__MAX_ARRAY_SIZE__);
-
-  array_t *dinv;
-  int i, o, c;
-  svalue_t *fp_result;
+  std::vector<object_t *> collected;
 
   valid_hide_flag = 0;
+  collected.reserve(std::min(max_array_size, 128));
 
-  /*
-   * count visible objects in an object's inventory, and in their
-   * inventory, etc
-   */
-  i = 0;
-  for (c = 0; c < arr->size; c++) {
-    if (arr->item[c].type == T_OBJECT) {
-      i += deep_inventory_count(arr->item[c].u.ob);
-      if (take_top) {
-        i++;
-      }
+  for (int c = 0; c < arr->size && static_cast<int>(collected.size()) < max_array_size; c++) {
+    if (arr->item[c].type != T_OBJECT) {
+      continue;
+    }
+
+    const bool ok =
+        take_top ? deep_inventory_add_top(arr->item[c].u.ob, fp, &collected, max_array_size)
+                 : deep_inventory_collect_iterative(arr->item[c].u.ob, fp, &collected,
+                                                    max_array_size);
+    if (!ok) {
+      release_deep_inventory_refs(&collected, "deep_inventory_array_abort");
+      return &the_null_array;
     }
   }
 
-  if (i == 0) {
+  if (collected.empty()) {
     return &the_null_array;
   }
 
-  if (i > max_array_size) {
-    i = max_array_size;
+  auto *dinv = allocate_empty_array(collected.size());
+  for (int i = 0; i < dinv->size; i++) {
+    dinv->item[i].type = T_OBJECT;
+    dinv->item[i].u.ob = collected[i];
   }
-
-  /*
-   * allocate an array
-   */
-  dinv = int_allocate_array(o = i);
-  push_refed_array(dinv);
-  /*
-   * collect visible inventory objects recursively
-   */
-  i = 0;
-  for (c = 0; i < o && c < arr->size; c++) {
-    if (arr->item[c].type == T_OBJECT) {
-      if (take_top) {
-        if (fp) {
-          push_object(arr->item[c].u.ob);
-          fp_result = call_function_pointer(fp, 1);
-          if (!fp_result || (current_object->flags & O_DESTRUCTED)) {
-            pop_stack();  // free dinv
-            return &the_null_array;
-          }
-        }
-        if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number > 0 &&
-                    !(arr->item[c].u.ob->flags & O_DESTRUCTED))) {
-          if (!fp || (fp && fp_result->type == T_NUMBER && fp_result->u.number != 3)) {
-            dinv->item[i].type = T_OBJECT;
-            dinv->item[i].u.ob = arr->item[c].u.ob;
-            add_ref(arr->item[c].u.ob, "deep_inventory");
-            i++;
-          }
-          if (!fp || (fp && fp_result->type == T_NUMBER &&
-                      (fp_result->u.number == 1 || fp_result->u.number == 3))) {
-            deep_inventory_collect(arr->item[c].u.ob, dinv, &i, o, fp);
-          }
-        }
-      } else {
-        deep_inventory_collect(arr->item[c].u.ob, dinv, &i, o, fp);
-      }
-    }
-  }
-
-  // resize the array if we have filtered out values
-  if (fp && i < o) {
-    dinv = resize_array(dinv, i);
-  }
-  sp--;  // get dinv of the stack but don't free it
   return dinv;
 }
 #endif
@@ -1958,28 +1923,34 @@ array_t *inherit_list(object_t *ob) {
 }
 
 #ifdef F_LIVINGS
-static int livings_filter(object_t *ob, void *data) { return (ob->flags & O_ENABLE_COMMANDS); }
-
 array_t *livings() {
   auto max_array_size = CONFIG_INT(__MAX_ARRAY_SIZE__);
-
-  int count;
-  object_t **list;
+  std::vector<object_t *> list;
   array_t *ret;
 
-  get_objects(&list, &count, livings_filter, nullptr);
+#ifdef F_SET_HIDE
+  const bool include_hidden = (current_object->flags & O_HIDDEN) || valid_hide(current_object);
+#else
+  const bool include_hidden = true;
+#endif
 
-  if (count > max_array_size) {
-    count = max_array_size;
-  }
-  ret = allocate_empty_array(count);
-  while (count--) {
-    ret->item[count].type = T_OBJECT;
-    ret->item[count].u.ob = list[count];
-    add_ref(list[count], "livings");
+  list.reserve(std::min(max_array_size, 128));
+  for (auto *ob = command_enabled_list; ob && static_cast<int>(list.size()) < max_array_size;
+       ob = ob->next_cmd) {
+#ifdef F_SET_HIDE
+    if (!include_hidden && (ob->flags & O_HIDDEN)) {
+      continue;
+    }
+#endif
+    list.push_back(ob);
   }
 
-  pop_stack();
+  ret = allocate_empty_array(list.size());
+  for (int i = 0; i < ret->size; i++) {
+    ret->item[i].type = T_OBJECT;
+    ret->item[i].u.ob = list[i];
+    add_ref(list[i], "livings");
+  }
   return ret;
 }
 #endif
@@ -2002,6 +1973,33 @@ void f_objects(void) {
     f = sp->u.fp;
   } else {
     func = sp->u.string;
+  }
+
+  if (!f && !func) {
+    bool include_hidden = true;
+#ifdef F_SET_HIDE
+    include_hidden = (current_object->flags & O_HIDDEN) || valid_hide(current_object);
+#endif
+    ret = allocate_empty_array(
+        static_cast<int>(std::min<uint64_t>(max_array_size, tot_alloc_object)));
+    count = 0;
+    for (auto *ob = obj_list; ob && count < max_array_size; ob = ob->next_all) {
+#ifdef F_SET_HIDE
+      if (!include_hidden && (ob->flags & O_HIDDEN)) {
+        continue;
+      }
+#endif
+      ret->item[count].type = T_OBJECT;
+      ret->item[count].u.ob = ob;
+      add_ref(ob, "f_objects");
+      count++;
+    }
+    if (count < ret->size) {
+      ret = resize_array(ret, count);
+    }
+    pop_n_elems(num_arg);
+    push_refed_array(ret);
+    return;
   }
 
   get_objects(&list, &count, nullptr, nullptr);

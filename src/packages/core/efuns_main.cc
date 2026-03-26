@@ -947,40 +947,49 @@ void f_master() {
 #ifdef F_MATCH_PATH
 void f_match_path() {
   svalue_t *value;
-  const char *src;
-  char *dst;
   svalue_t *nvalue;
   mapping_t *map;
-  char *tmpstr;
+  std::string normalized;
 
   value = &const0u;
+  normalized.reserve(SVALUE_STRLEN(sp));
 
-  tmpstr = reinterpret_cast<char *>(DMALLOC(SVALUE_STRLEN(sp) + 1, TAG_STRING, "match_path"));
-
-  src = sp->u.string;
-  dst = tmpstr;
-
-  while (*src != '\0') {
+  for (const char *src = sp->u.string; *src != '\0';) {
     while (*src != '/' && *src != '\0') {
-      *dst++ = *src++;
+      normalized.push_back(*src++);
     }
     if (*src == '/') {
       while (*++src == '/') {
-        ;
       }
-      if (*src != '\0' || dst == tmpstr) {
-        *dst++ = '/';
+      if (*src != '\0' || normalized.empty()) {
+        normalized.push_back('/');
       }
-    }
-    *dst = '\0';
-    nvalue = find_string_in_mapping((sp - 1)->u.map, tmpstr);
-
-    if (nvalue != &const0u) {
-      value = nvalue;
     }
   }
 
-  FREE(tmpstr);
+  if (!normalized.empty()) {
+    nvalue = find_string_in_mapping((sp - 1)->u.map, normalized.c_str());
+    if (nvalue != &const0u) {
+      value = nvalue;
+    } else {
+      for (size_t slash = normalized.rfind('/'); slash != std::string::npos && slash + 1 < normalized.size();) {
+        char saved = normalized[slash + 1];
+        normalized[slash + 1] = '\0';
+        nvalue = find_string_in_mapping((sp - 1)->u.map, normalized.c_str());
+        normalized[slash + 1] = saved;
+
+        if (nvalue != &const0u) {
+          value = nvalue;
+          break;
+        }
+        if (slash == 0) {
+          break;
+        }
+        slash = normalized.rfind('/', slash - 1);
+      }
+    }
+  }
+
   /* Don't free mapping first, in case sometimes one uses a ref 1 mapping */
   /* Randor - 5/29/94 */
   free_string_svalue(sp--);

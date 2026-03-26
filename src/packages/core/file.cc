@@ -289,6 +289,213 @@ int write_file(const char *file, const char *str, int flags) {
   return 1;
 }
 
+static bool read_file_is_gzip(const char *file) {
+  unsigned char magic[2] = {0, 0};
+  FILE *fp = fopen(file, "rb");
+
+  if (!fp) {
+    return false;
+  }
+
+  size_t read = fread(magic, 1, sizeof(magic), fp);
+  fclose(fp);
+  return read == sizeof(magic) && magic[0] == 0x1f && magic[1] == 0x8b;
+}
+
+static char *copy_read_file_result(const char *buffer, size_t len) {
+  bool has_cr = false;
+  for (size_t i = 0; i < len; i++) {
+    if (buffer[i] == '\r') {
+      has_cr = true;
+      break;
+    }
+  }
+
+  if (!has_cr) {
+    char *result = new_string(len, "read_file: result");
+    memcpy(result, buffer, len);
+    result[len] = '\0';
+    return result;
+  }
+
+  std::string content;
+  content.reserve(len);
+  bool pending_cr = false;
+  for (size_t i = 0; i < len; i++) {
+    const char c = buffer[i];
+    if (pending_cr) {
+      if (c == '\n') {
+        content.push_back('\n');
+        pending_cr = false;
+        continue;
+      }
+      content.push_back('\r');
+      pending_cr = false;
+    }
+
+    if (c == '\r') {
+      pending_cr = true;
+    } else {
+      content.push_back(c);
+    }
+  }
+
+  if (pending_cr) {
+    content.push_back('\r');
+  }
+
+  return string_copy(content.c_str(), "read file: CRLF result");
+}
+
+static char *extract_read_file_slice(const char *file, char *buffer, int total_bytes_read, int start,
+                                     int lines, int read_file_max_size) {
+  const char *ptr_start = buffer;
+
+  if (start > 1) {
+    while (start > 1 && ptr_start < buffer + total_bytes_read) {
+      if (*ptr_start == '\0') {
+        debug(file, "read_file: file contains '\\0': %s.\n", file);
+        return nullptr;
+      }
+      if (*ptr_start == '\n') {
+        start--;
+      }
+      ptr_start++;
+    }
+
+    if (start > 1) {
+      debug(file, "read_file: reached EOF searching for start: %s.\n", file);
+      return nullptr;
+    }
+  } else if (start < 0) {
+    ptr_start += total_bytes_read - 1;
+
+    if (*ptr_start != '\n') {
+      ptr_start++;
+    }
+
+    while (start < 0 && ptr_start > buffer) {
+      ptr_start--;
+      if (*ptr_start == '\0') {
+        debug(file, "read_file: file contains '\\0': %s.\n", file);
+        return nullptr;
+      }
+      if (*ptr_start == '\n') {
+        start++;
+      }
+      if (!start) {
+        ptr_start++;
+      }
+    }
+
+    if (start < 0) {
+      ptr_start = buffer;
+    }
+  }
+
+  char *ptr_end = buffer + total_bytes_read;
+
+  if (lines > 0) {
+    ptr_end = const_cast<char *>(ptr_start);
+    while (lines > 0 && ptr_end <= buffer + total_bytes_read) {
+      if (*ptr_end++ == '\n') {
+        lines--;
+      }
+    }
+  }
+
+  if (ptr_end > ptr_start + read_file_max_size) {
+    ptr_end = const_cast<char *>(ptr_start) + read_file_max_size;
+  }
+
+  return copy_read_file_result(ptr_start, ptr_end - ptr_start);
+}
+
+static char *read_file_plain_streaming(const char *file, int start, int lines, int read_file_max_size) {
+  FILE *fp = fopen(file, "rb");
+  if (!fp) {
+    debug(file, "read_file: fail to open plain file: %s.\n", file);
+    return nullptr;
+  }
+
+  std::string content;
+  content.reserve(std::min(read_file_max_size, 4096));
+
+  int current_line = 1;
+  bool pending_cr = false;
+  bool reached_start = (start <= 1);
+  char chunk[8192];
+  size_t bytes_read = 0;
+
+  while ((bytes_read = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
+    for (size_t i = 0; i < bytes_read; i++) {
+      const char c = chunk[i];
+      if (c == '\0') {
+        fclose(fp);
+        debug(file, "read_file: file contains '\\0': %s.\n", file);
+        return nullptr;
+      }
+
+      if (pending_cr) {
+        if (c == '\n') {
+          if (reached_start && static_cast<int>(content.size()) < read_file_max_size) {
+            content.push_back('\n');
+          }
+          if (reached_start && lines > 0 && --lines == 0) {
+            fclose(fp);
+            return string_copy(content.c_str(), "read_file: streamed result");
+          }
+          current_line++;
+          reached_start = (current_line >= start);
+          pending_cr = false;
+          continue;
+        }
+
+        if (reached_start && static_cast<int>(content.size()) < read_file_max_size) {
+          content.push_back('\r');
+        }
+        pending_cr = false;
+      }
+
+      if (c == '\r') {
+        pending_cr = true;
+        continue;
+      }
+
+      if (reached_start && static_cast<int>(content.size()) < read_file_max_size) {
+        content.push_back(c);
+      }
+
+      if (c == '\n') {
+        if (reached_start && lines > 0 && --lines == 0) {
+          fclose(fp);
+          return string_copy(content.c_str(), "read_file: streamed result");
+        }
+        current_line++;
+        reached_start = (current_line >= start);
+      }
+
+      if (static_cast<int>(content.size()) >= read_file_max_size) {
+        fclose(fp);
+        return string_copy(content.c_str(), "read_file: streamed result");
+      }
+    }
+  }
+
+  fclose(fp);
+
+  if (pending_cr && reached_start && static_cast<int>(content.size()) < read_file_max_size) {
+    content.push_back('\r');
+  }
+
+  if (current_line < start) {
+    debug(file, "read_file: reached EOF searching for start: %s.\n", file);
+    return nullptr;
+  }
+
+  return string_copy(content.c_str(), "read_file: streamed result");
+}
+
 /* Reads file, starting from line of "start", with maximum lines of "lines".
  * Returns a malloced_string.
  */
@@ -329,6 +536,10 @@ char *read_file(const char *file, int start, int lines) {
     return nullptr;
   }
 
+  if (start > 0 && !read_file_is_gzip(real_file)) {
+    return read_file_plain_streaming(real_file, start, lines, read_file_max_size);
+  }
+
   gzFile f = gzopen(real_file, "rb");
 
   if (f == nullptr) {
@@ -350,81 +561,7 @@ char *read_file(const char *file, int start, int lines) {
     return nullptr;
   }
   the_buff[total_bytes_read] = '\0';
-  const char *ptr_start = the_buff;
-
-  if (start > 1) {
-    // skip forward until the "start"-th line
-    while (start > 1 && ptr_start < the_buff + total_bytes_read) {
-      if (*ptr_start == '\0') {
-        debug(file, "read_file: file contains '\\0': %s.\n", file);
-        return nullptr;
-      }
-      if (*ptr_start == '\n') {
-        start--;
-      }
-      ptr_start++;
-    }
-
-    // not found
-    if (start > 1) {
-      debug(file, "read_file: reached EOF searching for start: %s.\n", file);
-      return nullptr;
-    }
-  } else if (start < 0) {
-    // move backwards from end by "start"-th lines
-    ptr_start += total_bytes_read - 1;
-
-    // account for non-POSIX line endings at end of file, if not POSIX then
-    // move pointer forward so decrementing doesn't clip the last character
-    if (*ptr_start != '\n') ptr_start++;
-
-    while (start < 0 && ptr_start > the_buff) {
-      ptr_start--;
-      if (*ptr_start == '\0') {
-        debug(file, "read_file: file contains '\\0': %s.\n", file);
-        return nullptr;
-      }
-      if (*ptr_start == '\n') {
-        start++;
-      }
-      // move pointer past '\n' if we have enough lines
-      if (!start) {
-        ptr_start++;
-      }
-    }
-
-    if (start < 0) {
-      ptr_start = the_buff;
-    }
-  }
-
-  char *ptr_end = (char *)the_buff + total_bytes_read;
-
-  if (lines > 0) {
-    // continue searching forward for "lines" of '\n'
-    ptr_end = (char *)ptr_start;
-    while (lines > 0 && ptr_end <= the_buff + total_bytes_read) {
-      if (*ptr_end++ == '\n') {
-        lines--;
-      }
-    }
-  }
-
-  // Truncate result to read_file_max_size
-  if (ptr_end > ptr_start + read_file_max_size) {
-    ptr_end = (char *)ptr_start + read_file_max_size;
-  }
-
-  *ptr_end = '\0';
-
-  bool const found_crlf = strchr(ptr_start, '\r') != nullptr;
-  if (found_crlf) {
-    // Deal with CRLF.
-    std::string content(ptr_start);
-    ReplaceStringInPlace(content, "\r\n", "\n");
-    return string_copy(content.c_str(), "read file: CRLF result");
-  }
-  return string_copy(ptr_start, "read_file: result");
+  return extract_read_file_slice(file, the_buff, total_bytes_read, start, lines, read_file_max_size);
 }
 
 char *read_bytes(const char *file, int start, int len, int *rlen) {

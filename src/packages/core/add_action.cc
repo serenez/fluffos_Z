@@ -10,6 +10,7 @@ extern void update_load_av();
 #define MAX_VERB_BUFF 100
 
 object_t **hashed_living = nullptr;
+object_t *command_enabled_list = nullptr;
 
 static int num_living_names;
 static int num_searches = 1;
@@ -30,6 +31,46 @@ void init_living() {
   hashed_living = reinterpret_cast<object_t **>(DCALLOC(CONFIG_INT(__LIVING_HASH_TABLE_SIZE__),
                                                         sizeof(object_t *), TAG_PERMANENT,
                                                         __CURRENT_FILE_LINE__));
+}
+
+void add_command_enabled(object_t *ob) {
+  if (!ob) {
+    return;
+  }
+
+  if (command_enabled_list == ob || ob->prev_cmd || ob->next_cmd) {
+    return;
+  }
+
+  ob->prev_cmd = nullptr;
+  ob->next_cmd = command_enabled_list;
+  if (command_enabled_list) {
+    command_enabled_list->prev_cmd = ob;
+  }
+  command_enabled_list = ob;
+}
+
+void remove_command_enabled(object_t *ob) {
+  if (!ob) {
+    return;
+  }
+
+  if (command_enabled_list != ob && !ob->prev_cmd && !ob->next_cmd) {
+    return;
+  }
+
+  if (ob->prev_cmd) {
+    ob->prev_cmd->next_cmd = ob->next_cmd;
+  } else if (command_enabled_list == ob) {
+    command_enabled_list = ob->next_cmd;
+  }
+
+  if (ob->next_cmd) {
+    ob->next_cmd->prev_cmd = ob->prev_cmd;
+  }
+
+  ob->next_cmd = nullptr;
+  ob->prev_cmd = nullptr;
 }
 
 static void notify_no_command() {
@@ -127,7 +168,6 @@ object_t *find_living_object(const char *str, int user) {
 void remove_living_name(object_t *ob) {
   object_t **hl;
 
-  ob->flags &= ~O_ENABLE_COMMANDS;
   if (!ob->living_name) {
     return;
   }
@@ -255,6 +295,7 @@ static void enable_commands(int enable, int toggle_action) {
 #ifndef NO_ENVIRONMENT
 
 #endif
+  int const was_enabled = (current_object->flags & O_ENABLE_COMMANDS);
 
   if (current_object->flags & O_DESTRUCTED) {
     return;
@@ -265,6 +306,9 @@ static void enable_commands(int enable, int toggle_action) {
           current_object->ref);
 
     current_object->flags |= O_ENABLE_COMMANDS;
+    if (!was_enabled) {
+      add_command_enabled(current_object);
+    }
     set_command_giver(current_object);
     if (toggle_action || CONFIG_INT(__RC_ENABLE_COMMANDS_CALL_INIT__) != 0) {
       // NOTE: gotcha for re-enabling commands after disabling commands.
@@ -297,6 +341,9 @@ static void enable_commands(int enable, int toggle_action) {
       remove_sent(pp, current_object);
     }
 #endif
+    if (was_enabled) {
+      remove_command_enabled(current_object);
+    }
     current_object->flags &= ~O_ENABLE_COMMANDS;
     if (current_object == command_giver) {
       set_command_giver(nullptr);
