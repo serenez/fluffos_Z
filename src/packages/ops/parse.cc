@@ -15,6 +15,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "packages/core/add_action.h"
 
@@ -274,9 +275,12 @@ using parse_global_t = struct parse_global_s {
   array_t *warr;
   array_t *patarr;
   array_t *obarr;
+
+  void *find_string_cache;
 };
 
 static parse_global_t *globals = nullptr;
+static bool g_parse_command_legacy_mode_for_test = false;
 
 #define gId_list (globals->Id_list)
 #define gPluid_list (globals->Pluid_list)
@@ -318,6 +322,26 @@ static int check_adjectiv(int /*obix*/, array_t * /*warr*/, int /*from*/, int /*
 static int member_string(const char * /*str*/, array_t * /*sarr*/);
 static const char *parse_to_plural(const char * /*str*/);
 static const char *parse_one_plural(const char * /*str*/);
+
+namespace {
+
+struct find_string_cache_value_t {
+  const char *needle;
+  int start_index;
+  int position;
+  int updated_index;
+};
+
+using find_string_cache_t = std::vector<find_string_cache_value_t>;
+
+find_string_cache_t *ensure_find_string_cache() {
+  if (globals->find_string_cache == nullptr) {
+    globals->find_string_cache = new find_string_cache_t();
+  }
+  return reinterpret_cast<find_string_cache_t *>(globals->find_string_cache);
+}
+
+}  // namespace
 
 static bool phrase_matches_words(const char *phrase, array_t *warr, int start_index, int *end_index) {
   const char *word = phrase;
@@ -431,6 +455,7 @@ static void parse_clean_up() {
   pg = globals;
   globals = pg->next;
 
+  delete reinterpret_cast<find_string_cache_t *>(pg->find_string_cache);
   if (pg->Id_list) {
     free_array(pg->Id_list);
   }
@@ -490,11 +515,16 @@ static void push_parse_globals() {
   pg->warr = nullptr;
   pg->patarr = nullptr;
   pg->obarr = nullptr;
+  pg->find_string_cache = nullptr;
 }
 
 static void pop_parse_globals() {
   sp--; /* remove error handler */
   parse_clean_up();
+}
+
+void set_parse_command_legacy_mode_for_test(bool enabled) {
+  g_parse_command_legacy_mode_for_test = enabled;
 }
 
 /* all the routines below return a pointer to this which should be copied
@@ -1361,6 +1391,17 @@ static int find_string(const char *str, array_t *warr, int *cix_in) {
   int fpos;
   int end_index = 0;
   const char *p1, *p2;
+  const int start_index = *cix_in;
+
+  if (!g_parse_command_legacy_mode_for_test) {
+    auto *cache = ensure_find_string_cache();
+    for (auto const &entry : *cache) {
+      if (entry.needle == str && entry.start_index == start_index) {
+        *cix_in = entry.updated_index;
+        return entry.position;
+      }
+    }
+  }
 
   for (; *cix_in < warr->size; (*cix_in)++) {
     p1 = warr->item[*cix_in].u.string;
@@ -1369,6 +1410,10 @@ static int find_string(const char *str, array_t *warr, int *cix_in) {
     }
 
     if (strcmp(p1, str) == 0) { /* str was one word and we found it */
+      if (!g_parse_command_legacy_mode_for_test) {
+        auto *cache = ensure_find_string_cache();
+        cache->push_back({str, start_index, *cix_in, *cix_in});
+      }
       return *cix_in;
     }
 
@@ -1389,6 +1434,10 @@ static int find_string(const char *str, array_t *warr, int *cix_in) {
 
     fpos = *cix_in;
     *cix_in = end_index;
+    if (!g_parse_command_legacy_mode_for_test) {
+      auto *cache = ensure_find_string_cache();
+      cache->push_back({str, start_index, fpos, *cix_in});
+    }
     return fpos;
   }
   return -1;

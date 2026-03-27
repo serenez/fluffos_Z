@@ -25,7 +25,7 @@ struct TickEvent {
   using callback_type = std::function<void()>;
   callback_type callback;
 
-  TickEvent(callback_type &callback) : callback(callback) {}
+  explicit TickEvent(callback_type callback) : callback(std::move(callback)) {}
 };
 
 // Register a event to run on game ticks.

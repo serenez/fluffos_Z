@@ -2,6 +2,12 @@
 
 #include "packages/core/add_action.h"
 
+#include <algorithm>
+#include <unordered_map>
+#include <vector>
+
+#include "vm/internal/base/apply_cache.h"
+
 // in backend.cc
 extern void update_load_av();
 
@@ -18,6 +24,231 @@ static int search_length = 1;
 static int illegal_sentence_action;
 static const char *last_verb;
 static object_t *illegal_sentence_ob;
+
+namespace {
+
+constexpr unsigned char kInitLookupUnknown = 0;
+constexpr unsigned char kInitLookupAbsent = 1;
+constexpr unsigned char kInitLookupPresent = 2;
+
+struct ordered_sentence_t {
+  sentence_t *sentence;
+  uint32_t order;
+};
+
+struct parse_command_cache_t {
+  std::unordered_map<const char *, std::vector<ordered_sentence_t>> exact;
+  std::vector<ordered_sentence_t> fallbacks;
+  std::vector<ordered_sentence_t> specials;
+};
+
+std::unordered_map<object_t *, parse_command_cache_t> g_parse_command_cache;
+
+struct owner_bucket_t {
+  sentence_t **slot;
+  sentence_t *head;
+};
+
+owner_bucket_t find_owner_bucket(object_t *user, object_t *owner) {
+  sentence_t **slot = &user->sent_owners;
+  while (*slot != nullptr && (*slot)->ob != owner) {
+    slot = &(*slot)->owner_head_next;
+  }
+  return {slot, *slot};
+}
+
+void unlink_sentence_from_visible_list(object_t *user, sentence_t *sentence) {
+  if (sentence->prev != nullptr) {
+    sentence->prev->next = sentence->next;
+  } else {
+    user->sent = sentence->next;
+  }
+  if (sentence->next != nullptr) {
+    sentence->next->prev = sentence->prev;
+  }
+  sentence->prev = nullptr;
+  sentence->next = nullptr;
+}
+
+void unlink_sentence_from_owner_bucket(object_t *user, sentence_t *sentence) {
+  auto bucket = find_owner_bucket(user, sentence->ob);
+  if (bucket.head == nullptr) {
+    return;
+  }
+
+  sentence_t *previous = nullptr;
+  for (auto *current = bucket.head; current != nullptr; current = current->owner_next) {
+    if (current != sentence) {
+      previous = current;
+      continue;
+    }
+
+    if (previous != nullptr) {
+      previous->owner_next = sentence->owner_next;
+    } else if (sentence->owner_next != nullptr) {
+      auto *new_head = sentence->owner_next;
+      new_head->owner_head_next = sentence->owner_head_next;
+      *bucket.slot = new_head;
+    } else {
+      *bucket.slot = sentence->owner_head_next;
+    }
+
+    sentence->owner_next = nullptr;
+    sentence->owner_head_next = nullptr;
+    return;
+  }
+}
+
+void link_sentence_to_user(object_t *user, sentence_t *sentence) {
+  auto bucket = find_owner_bucket(user, sentence->ob);
+  if (bucket.head != nullptr) {
+    sentence->owner_next = bucket.head;
+    sentence->owner_head_next = bucket.head->owner_head_next;
+    bucket.head->owner_head_next = nullptr;
+    *bucket.slot = sentence;
+  } else {
+    sentence->owner_next = nullptr;
+    sentence->owner_head_next = user->sent_owners;
+    user->sent_owners = sentence;
+  }
+
+  sentence->prev = nullptr;
+  sentence->next = user->sent;
+  if (sentence->next != nullptr) {
+    sentence->next->prev = sentence;
+  }
+  user->sent = sentence;
+}
+
+bool sentence_matches_command(const sentence_t *sentence, const char *buff,
+                              const char *user_verb) {
+  if (sentence->flags & (V_NOSPACE | V_SHORT)) {
+    return strncmp(buff, sentence->verb, strlen(sentence->verb)) == 0;
+  }
+
+  return !sentence->verb[0] || user_verb == sentence->verb;
+}
+
+parse_command_cache_t build_parse_command_cache(object_t *ob) {
+  parse_command_cache_t cache;
+  uint32_t order = 0;
+
+  for (auto *sentence = ob->sent; sentence; sentence = sentence->next, order++) {
+    ordered_sentence_t ordered{sentence, order};
+    if (sentence->flags & (V_NOSPACE | V_SHORT)) {
+      cache.specials.push_back(ordered);
+    } else if (sentence->verb[0] == '\0') {
+      cache.fallbacks.push_back(ordered);
+    } else {
+      cache.exact[sentence->verb].push_back(ordered);
+    }
+  }
+
+  return cache;
+}
+
+const parse_command_cache_t &get_parse_command_cache(object_t *ob) {
+  auto it = g_parse_command_cache.find(ob);
+  if (it == g_parse_command_cache.end()) {
+    it = g_parse_command_cache.emplace(ob, build_parse_command_cache(ob)).first;
+  }
+  return it->second;
+}
+
+void collect_matching_sentences(object_t *ob, const char *buff, const char *user_verb,
+                                std::vector<ordered_sentence_t> *matches) {
+  matches->clear();
+  auto const &cache = get_parse_command_cache(ob);
+
+  if (auto it = cache.exact.find(user_verb); it != cache.exact.end()) {
+    matches->insert(matches->end(), it->second.begin(), it->second.end());
+  }
+  matches->insert(matches->end(), cache.fallbacks.begin(), cache.fallbacks.end());
+  for (auto const &ordered : cache.specials) {
+    if (sentence_matches_command(ordered.sentence, buff, user_verb)) {
+      matches->push_back(ordered);
+    }
+  }
+
+  if (matches->size() > 1) {
+    std::sort(matches->begin(), matches->end(),
+              [](const ordered_sentence_t &lhs, const ordered_sentence_t &rhs) {
+                return lhs.order < rhs.order;
+              });
+  }
+}
+
+bool program_has_init(program_t *prog) {
+  if (prog == nullptr) {
+    return false;
+  }
+  if (prog->init_lookup_state == kInitLookupUnknown) {
+    auto lookup = apply_cache_lookup(APPLY_INIT, prog);
+    prog->init_lookup_state = kInitLookupAbsent;
+    if (lookup.funp != nullptr) {
+      auto flags = prog->function_flags[lookup.runtime_index];
+      if (!(flags & FUNC_UNDEFINED)) {
+        prog->init_lookup_state = kInitLookupPresent;
+      }
+    }
+  }
+  return prog->init_lookup_state == kInitLookupPresent;
+}
+
+bool object_has_driver_init(object_t *ob) {
+  if (ob == nullptr || ob->prog == nullptr || (ob->flags & O_DESTRUCTED)) {
+    return false;
+  }
+
+#ifndef NO_SHADOWS
+  while (ob->shadowed && ob->shadowed != current_object && !(ob->shadowed->flags & O_DESTRUCTED)) {
+    ob = ob->shadowed;
+  }
+#endif
+
+  for (object_t *candidate = ob; candidate != nullptr;
+#ifndef NO_SHADOWS
+       candidate = candidate->shadowing
+#else
+       candidate = nullptr
+#endif
+  ) {
+    if (program_has_init(candidate->prog)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void apply_driver_miss_side_effects(object_t *ob) {
+  if (ob == nullptr || (ob->flags & O_DESTRUCTED)) {
+    return;
+  }
+
+  ob->time_of_ref = g_current_gametick;
+  if (!CONFIG_INT(__RC_NO_RESETS__) && CONFIG_INT(__RC_LAZY_RESETS__)) {
+    try_reset(ob);
+  }
+  if (!(ob->flags & O_DESTRUCTED)) {
+    ob->flags &= ~O_RESET_STATE;
+  }
+}
+
+void maybe_apply_init(object_t *target, object_t *new_command_giver) {
+  if (!object_has_driver_init(target)) {
+    apply_driver_miss_side_effects(target);
+    return;
+  }
+
+  save_command_giver(new_command_giver);
+  (void)apply(APPLY_INIT, target, 0, ORIGIN_DRIVER);
+  restore_command_giver();
+}
+
+}  // namespace
+
+void clear_parse_command_cache(object_t *ob) { g_parse_command_cache.erase(ob); }
 
 void init_living() {
   // make sure size is power of 2.
@@ -224,9 +455,7 @@ void setup_new_commands(object_t *dest, object_t *item) {
    * the -o mode). It might be too slow, though :-(
    */
   if (item->flags & O_ENABLE_COMMANDS) {
-    save_command_giver(item);
-    (void)apply(APPLY_INIT, dest, 0, ORIGIN_DRIVER);
-    restore_command_giver();
+    maybe_apply_init(dest, item);
     if (item->super != dest) {
       return;
     }
@@ -247,9 +476,7 @@ void setup_new_commands(object_t *dest, object_t *item) {
       error("An object was moved at call of " APPLY_INIT "()\n");
     }
     if (ob->flags & O_ENABLE_COMMANDS) {
-      save_command_giver(ob);
-      (void)apply(APPLY_INIT, item, 0, ORIGIN_DRIVER);
-      restore_command_giver();
+      maybe_apply_init(item, ob);
       if (dest != item->super) {
         return;
       }
@@ -261,9 +488,7 @@ void setup_new_commands(object_t *dest, object_t *item) {
       error("An object was destructed at call of " APPLY_INIT "()\n");
     }
     if (item->flags & O_ENABLE_COMMANDS) {
-      save_command_giver(item);
-      (void)apply(APPLY_INIT, ob, 0, ORIGIN_DRIVER);
-      restore_command_giver();
+      maybe_apply_init(ob, item);
       if (dest != item->super) {
         return;
       }
@@ -276,9 +501,7 @@ void setup_new_commands(object_t *dest, object_t *item) {
     error("The object to be moved was destructed at call of " APPLY_INIT "()\n");
   }
   if (dest->flags & O_ENABLE_COMMANDS) {
-    save_command_giver(dest);
-    (void)apply(APPLY_INIT, item, 0, ORIGIN_DRIVER);
-    restore_command_giver();
+    maybe_apply_init(item, dest);
   }
 }
 
@@ -364,6 +587,7 @@ static int user_parser(char *buff) {
   const char *user_verb = nullptr;
   int where;
   int save_illegal_sentence_action;
+  std::vector<ordered_sentence_t> matching_sentences;
 
   debug(add_action, "cmd [/%s]: '%s'\n", command_giver->obname, buff);
 
@@ -410,19 +634,10 @@ static int user_parser(char *buff) {
 
   save_illegal_sentence_action = illegal_sentence_action;
   illegal_sentence_action = 0;
-  for (s = command_giver->sent; s; s = s->next) {
+  collect_matching_sentences(command_giver, buff, user_verb, &matching_sentences);
+  for (auto const &ordered : matching_sentences) {
+    s = ordered.sentence;
     svalue_t *ret;
-
-    if (s->flags & (V_NOSPACE | V_SHORT)) {
-      if (strncmp(buff, s->verb, strlen(s->verb)) != 0) {
-        continue;
-      }
-    } else {
-      /* note: if was add_action(blah, "") then accept it */
-      if (s->verb[0] && (user_verb != s->verb)) {
-        continue;
-      }
-    }
     /*
      * Now we have found a special sentence !
      */
@@ -608,6 +823,7 @@ static void add_action(svalue_t *str, const char *cmd, int flag) {
     return;
   } /* No need for an error, they know what they
      * did wrong. */
+  clear_parse_command_cache(command_giver);
   p = alloc_sentence();
   if (str->type == T_STRING) {
     debug(add_action, "--Add action '%s' (ob: %s func: '%s')\n", cmd, ob->obname, str->u.string);
@@ -622,9 +838,7 @@ static void add_action(svalue_t *str, const char *cmd, int flag) {
   }
   p->ob = ob;
   p->verb = make_shared_string(cmd);
-  /* This is ok; adding to the top of the list doesn't harm anything */
-  p->next = command_giver->sent;
-  command_giver->sent = p;
+  link_sentence_to_user(command_giver, p);
 }
 
 /*
@@ -634,7 +848,6 @@ static void add_action(svalue_t *str, const char *cmd, int flag) {
  */
 static int remove_action(const char *act, const char *verb) {
   object_t *ob;
-  sentence_t **s;
 
   if (command_giver) {
     ob = command_giver;
@@ -643,14 +856,13 @@ static int remove_action(const char *act, const char *verb) {
   }
 
   if (ob) {
-    for (s = &ob->sent; *s; s = &((*s)->next)) {
-      sentence_t *tmp;
-
-      if (((*s)->ob == current_object) && (!((*s)->flags & V_FUNCTION)) &&
-          !strcmp((*s)->function.s, act) && !strcmp((*s)->verb, verb)) {
-        tmp = *s;
-        *s = tmp->next;
-        free_sentence(tmp);
+    for (auto *sentence = ob->sent; sentence != nullptr; sentence = sentence->next) {
+      if ((sentence->ob == current_object) && (!(sentence->flags & V_FUNCTION)) &&
+          !strcmp(sentence->function.s, act) && !strcmp(sentence->verb, verb)) {
+        clear_parse_command_cache(ob);
+        unlink_sentence_from_owner_bucket(ob, sentence);
+        unlink_sentence_from_visible_list(ob, sentence);
+        free_sentence(sentence);
         illegal_sentence_action = 1;
         illegal_sentence_ob = current_object;
         return 1;
@@ -666,31 +878,34 @@ static int remove_action(const char *act, const char *verb) {
  */
 #ifndef NO_ENVIRONMENT
 void remove_sent(object_t *ob, object_t *user) {
-  sentence_t **s;
-
   if (!(user->flags & O_ENABLE_COMMANDS)) {
     return;
   }
 
-  for (s = &user->sent; *s;) {
-    sentence_t *tmp;
+  auto bucket = find_owner_bucket(user, ob);
+  if (bucket.head == nullptr) {
+    return;
+  }
 
-    if ((*s)->ob == ob) {
+  clear_parse_command_cache(user);
+  *bucket.slot = bucket.head->owner_head_next;
+  for (auto *sentence = bucket.head; sentence != nullptr;) {
+    auto *next_owner = sentence->owner_next;
+
 #ifdef DEBUG
-      if (!((*s)->flags & V_FUNCTION)) {
-        debug(add_action, "--Unlinking sentence %s (user: %s ob: %s)\n", (*s)->function.s,
-              user->obname, ob->obname);
-      }
+    if (!(sentence->flags & V_FUNCTION)) {
+      debug(add_action, "--Unlinking sentence %s (user: %s ob: %s)\n", sentence->function.s,
+            user->obname, ob->obname);
+    }
 #endif
 
-      tmp = *s;
-      *s = tmp->next;
-      free_sentence(tmp);
-      illegal_sentence_action = 2;
-      illegal_sentence_ob = ob;
-    } else {
-      s = &((*s)->next);
-    }
+    unlink_sentence_from_visible_list(user, sentence);
+    sentence->owner_next = nullptr;
+    sentence->owner_head_next = nullptr;
+    free_sentence(sentence);
+    illegal_sentence_action = 2;
+    illegal_sentence_ob = ob;
+    sentence = next_owner;
   }
 }
 #endif

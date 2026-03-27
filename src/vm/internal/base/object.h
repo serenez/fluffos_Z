@@ -60,6 +60,9 @@
 struct sentence_t {
 #ifndef NO_ADD_ACTION
   const char *verb;
+  struct sentence_t *prev;
+  struct sentence_t *owner_next;
+  struct sentence_t *owner_head_next;
 #endif
   struct sentence_t *next;
   struct object_t *ob;
@@ -99,6 +102,7 @@ struct object_t {
 #endif                        /* NO_SHADOWS */
 #ifndef NO_ADD_ACTION
   sentence_t *sent;
+  sentence_t *sent_owners;
   struct object_t *next_hashed_living;
   struct object_t *next_cmd;
   struct object_t *prev_cmd;

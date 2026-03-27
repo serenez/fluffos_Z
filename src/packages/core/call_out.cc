@@ -5,6 +5,7 @@
 #include <chrono>
 #include <functional>
 #include <cmath>
+#include <cstring>
 #include <unordered_map>
 
 #include "packages/core/sprintf.h"
@@ -19,16 +20,20 @@
 using CalloutHandleMapType = std::unordered_map<LPC_INT, pending_call_t *>;
 static CalloutHandleMapType g_callout_handle_map;
 
-// Key is the pointer to the object, this provides an fast way for
-// remove_call_out() with object only, this map may contains invalidated
-// references and only get pruned during reclaim_callouts();
-using CalloutObjectMapType = std::unordered_multimap<object_t *, LPC_INT>;
+// Key is the pointer to the owner object. Value is the head of that owner's
+// intrusive pending_call_t chain so object-scoped lookup never scans stale
+// handles.
+using CalloutObjectMapType = std::unordered_map<object_t *, pending_call_t *>;
 static CalloutObjectMapType g_callout_object_handle_map;
 
 // Handle 0 as an always-invalid sentinel. We allocate the next free handle from
 // the live map so long-lived callouts do not become unremovable just because
 // newer handles were created later.
 static LPC_INT next_handle = 0;
+static constexpr size_t kCallOutPoolMaxEntries = 16384;
+static pending_call_t *g_call_out_pool = nullptr;
+static size_t g_call_out_pool_size = 0;
+static bool g_call_out_pool_enabled = true;
 
 namespace {
 LPC_INT allocate_call_out_handle() {
@@ -41,6 +46,90 @@ LPC_INT allocate_call_out_handle() {
   } while (next_handle == 0 || g_callout_handle_map.find(next_handle) != g_callout_handle_map.end());
 
   return next_handle;
+}
+
+object_t *call_out_owner_key(object_t *ob, svalue_t *fun) {
+  return ob ? ob : fun->u.fp->hdr.owner;
+}
+
+void link_call_out_owner_bucket(pending_call_t *cop) {
+  auto *&head = g_callout_object_handle_map[cop->owner_bucket_key];
+  cop->owner_prev = nullptr;
+  cop->owner_next = head;
+  if (head != nullptr) {
+    head->owner_prev = cop;
+  }
+  head = cop;
+}
+
+void unlink_call_out_owner_bucket(pending_call_t *cop) {
+  if (cop->owner_bucket_key == nullptr) {
+    return;
+  }
+
+  auto iter = g_callout_object_handle_map.find(cop->owner_bucket_key);
+  if (iter == g_callout_object_handle_map.end()) {
+    cop->owner_bucket_key = nullptr;
+    cop->owner_prev = nullptr;
+    cop->owner_next = nullptr;
+    return;
+  }
+
+  if (cop->owner_prev != nullptr) {
+    cop->owner_prev->owner_next = cop->owner_next;
+  } else {
+    iter->second = cop->owner_next;
+  }
+  if (cop->owner_next != nullptr) {
+    cop->owner_next->owner_prev = cop->owner_prev;
+  }
+  if (iter->second == nullptr) {
+    g_callout_object_handle_map.erase(iter);
+  }
+
+  cop->owner_bucket_key = nullptr;
+  cop->owner_prev = nullptr;
+  cop->owner_next = nullptr;
+}
+
+void detach_call_out_indices(pending_call_t *cop) {
+  int const found = g_callout_handle_map.erase(cop->handle);
+  DEBUG_CHECK(!found, "BUG: Rogue callout, not found in map.\n");
+  unlink_call_out_owner_bucket(cop);
+}
+
+pending_call_t *allocate_pending_call() {
+  if (g_call_out_pool_enabled && g_call_out_pool != nullptr) {
+    auto *cop = g_call_out_pool;
+    g_call_out_pool = cop->pool_next;
+    g_call_out_pool_size--;
+    std::memset(cop, 0, sizeof(*cop));
+    return cop;
+  }
+
+  return reinterpret_cast<pending_call_t *>(
+      DCALLOC(1, sizeof(pending_call_t), TAG_CALL_OUT, "new_call_out"));
+}
+
+void recycle_pending_call(pending_call_t *cop) {
+  if (g_call_out_pool_enabled && g_call_out_pool_size < kCallOutPoolMaxEntries) {
+    std::memset(cop, 0, sizeof(*cop));
+    cop->pool_next = g_call_out_pool;
+    g_call_out_pool = cop;
+    g_call_out_pool_size++;
+    return;
+  }
+
+  FREE(cop);
+}
+
+void clear_call_out_pool() {
+  while (g_call_out_pool != nullptr) {
+    auto *next = g_call_out_pool->pool_next;
+    FREE(g_call_out_pool);
+    g_call_out_pool = next;
+  }
+  g_call_out_pool_size = 0;
 }
 }  // namespace
 
@@ -78,7 +167,7 @@ static void free_called_call(pending_call_t *cop) {
     cop->tick_event->valid = false;  // Will be freed by tick loop itself.
     cop->tick_event = nullptr;
   }
-  FREE(cop);
+  recycle_pending_call(cop);
 }
 
 static void free_call(pending_call_t *cop) {
@@ -113,8 +202,7 @@ LPC_INT new_call_out(object_t *ob, svalue_t *fun, std::chrono::milliseconds dela
     }
   }
 
-  auto *cop = reinterpret_cast<pending_call_t *>(
-      DCALLOC(1, sizeof(pending_call_t), TAG_CALL_OUT, "new_call_out"));
+  auto *cop = allocate_pending_call();
 
   cop->is_walltime = walltime;
   auto delay_ticks = delay_msecs.count() == 0 ? 0 : time_to_next_gametick(delay_msecs);
@@ -145,10 +233,10 @@ LPC_INT new_call_out(object_t *ob, svalue_t *fun, std::chrono::milliseconds dela
 
   cop->handle = allocate_call_out_handle();
   DBG_CALLOUT("  handle: %" LPC_INT_FMTSTR_P "\n", cop->handle);
+  cop->owner_bucket_key = call_out_owner_key(ob, fun);
 
   g_callout_handle_map.insert(std::make_pair(cop->handle, cop));
-  g_callout_object_handle_map.insert(
-      std::make_pair(cop->ob ? cop->ob : fun->u.fp->hdr.owner, cop->handle));
+  link_call_out_owner_bucket(cop);
 
   if (CONFIG_INT(__RC_THIS_PLAYER_IN_CALL_OUT__)) {
     cop->command_giver = command_giver; /* save current user context */
@@ -194,11 +282,7 @@ void call_out(pending_call_t *cop) {
                                      .count()
                                : g_current_gametick);
 
-  // Remove self from callout map
-  {
-    int const found = g_callout_handle_map.erase(cop->handle);
-    DEBUG_CHECK(!found, "BUG: Rogue callout, not found in map.\n");
-  }
+  detach_call_out_indices(cop);
 
   if (!ob || (ob->flags & O_DESTRUCTED)) {
     DBG_CALLOUT("  ob destructed, ignored.\n");
@@ -290,26 +374,18 @@ int remove_call_out(object_t *ob, const char *fun) {
 
   DBG_CALLOUT("remove_call_out: /%s \"%s\"\n", ob->obname, fun);
 
-  auto range = g_callout_object_handle_map.equal_range(ob);
-  auto iter = range.first;
-  while (iter != range.second) {
-    auto iter_handle = g_callout_handle_map.find(iter->second);
-    if (iter_handle == g_callout_handle_map.end()) {
-      iter = g_callout_object_handle_map.erase(iter);
-      continue;
-    }
-    auto *cop = iter_handle->second;
-
+  auto iter = g_callout_object_handle_map.find(ob);
+  auto *cop = iter == g_callout_object_handle_map.end() ? nullptr : iter->second;
+  while (cop != nullptr) {
+    auto *next = cop->owner_next;
     if (cop->ob == ob && strcmp(cop->function.s, fun) == 0) {
       auto remaining_time = time_left(cop);
+      detach_call_out_indices(cop);
       free_call(cop);
-      g_callout_handle_map.erase(iter_handle);
-      g_callout_object_handle_map.erase(iter);
-
       DBG_CALLOUT("  found: remaining time %d.\n", remaining_time);
       return remaining_time;
     }
-    iter++;
+    cop = next;
   }
   DBG_CALLOUT("  not found.\n");
   return -1;
@@ -332,9 +408,8 @@ int remove_call_out_by_handle(object_t *ob, LPC_INT handle) {
   if (iter != g_callout_handle_map.end()) {
     auto *cop = iter->second;
     auto remaining_time = time_left(cop);
+    detach_call_out_indices(cop);
     free_call(cop);
-
-    g_callout_handle_map.erase(iter);
 
     DBG_CALLOUT("  found: remaining time %d.\n", remaining_time);
     return remaining_time;
@@ -372,21 +447,15 @@ int find_call_out(object_t *ob, const char *fun) {
 
   DBG_CALLOUT("find_call_out: ob:%s \"%s\"\n", ob->obname, fun);
 
-  auto range = g_callout_object_handle_map.equal_range(ob);
-  auto iter = range.first;
-  while (iter != range.second) {
-    auto iter_handle = g_callout_handle_map.find(iter->second);
-    if (iter_handle == g_callout_handle_map.end()) {
-      iter = g_callout_object_handle_map.erase(iter);
-      continue;
-    }
-    auto *cop = iter_handle->second;
+  auto iter = g_callout_object_handle_map.find(ob);
+  auto *cop = iter == g_callout_object_handle_map.end() ? nullptr : iter->second;
+  while (cop != nullptr) {
     if (cop->ob == ob && strcmp(cop->function.s, fun) == 0) {
       auto remaining_time = time_left(cop);
       DBG_CALLOUT("  found: remaining time %d.\n", remaining_time);
       return remaining_time;
     }
-    iter++;
+    cop = cop->owner_next;
   }
   DBG_CALLOUT("  not found.\n");
   return -1;
@@ -405,22 +474,53 @@ int print_call_out_usage(outbuffer_t *ob, int verbose) {
                 g_callout_object_handle_map.bucket_count());
     outbuf_addv(ob, "Current object map load_factor: %f\n",
                 g_callout_object_handle_map.load_factor());
-    outbuf_addv(ob, "Number of garbage entry in object map: %" PRIu64 "\n",
-                g_callout_object_handle_map.size() - g_callout_handle_map.size());
+    outbuf_addv(ob, "Number of owner buckets in object map: %" PRIu64 "\n",
+                g_callout_object_handle_map.size());
+    outbuf_add(ob, "Number of garbage entry in object map: 0\n");
+    outbuf_addv(ob, "Pooled pending_call_t entries: %zu, %zu bytes.\n", g_call_out_pool_size,
+                g_call_out_pool_size * sizeof(pending_call_t));
   } else {
     if (verbose != -1) {
-      outbuf_addv(ob, "%-20s %8" PRIu64 " %8" PRIu64 " (buckets %zu)\n", "call out",
+      outbuf_addv(ob, "%-20s %8" PRIu64 " %8" PRIu64 " (buckets %zu, pooled %zu)\n", "call out",
                   g_callout_handle_map.size(), g_callout_handle_map.size() * sizeof(pending_call_t),
-                  g_callout_handle_map.bucket_count());
+                  g_callout_handle_map.bucket_count(), g_call_out_pool_size);
     }
   }
   return g_callout_handle_map.size() *
              (sizeof(LPC_INT) + sizeof(pending_call_t *) + sizeof(pending_call_t)) +
-         g_callout_handle_map.size() * (sizeof(object_t *) + sizeof(LPC_INT));
+         g_callout_object_handle_map.size() * (sizeof(object_t *) + sizeof(pending_call_t *)) +
+         g_call_out_pool_size * sizeof(pending_call_t);
 }
 
 // only used in checkmemory
-int total_callout_size() { return g_callout_handle_map.size() * sizeof(pending_call_t); }
+int total_callout_size() {
+  return (g_callout_handle_map.size() + g_call_out_pool_size) * sizeof(pending_call_t);
+}
+
+size_t call_out_owner_index_entry_count_for_test() {
+  size_t count = 0;
+  for (const auto &iter : g_callout_object_handle_map) {
+    for (auto *cop = iter.second; cop != nullptr; cop = cop->owner_next) {
+      count++;
+    }
+  }
+  return count;
+}
+
+size_t call_out_owner_index_bucket_count_for_test() {
+  return g_callout_object_handle_map.size();
+}
+
+size_t call_out_pool_entry_count_for_test() { return g_call_out_pool_size; }
+
+void clear_call_out_pool_for_test() { clear_call_out_pool(); }
+
+void set_call_out_pool_enabled_for_test(bool enabled) {
+  g_call_out_pool_enabled = enabled;
+  if (!enabled) {
+    clear_call_out_pool();
+  }
+}
 
 #ifdef DEBUGMALLOC_EXTENSIONS
 void mark_call_outs() {
@@ -512,39 +612,29 @@ array_t *get_all_call_outs() {
 void remove_all_call_out(object_t *obj) {
   int i = 0;
 
-  auto range = g_callout_object_handle_map.equal_range(obj);
-  auto iter = range.first;
+  auto iter = g_callout_object_handle_map.find(obj);
+  auto *cop = iter == g_callout_object_handle_map.end() ? nullptr : iter->second;
 
-  while (iter != range.second) {
-    auto iter_handle = g_callout_handle_map.find(iter->second);
-    if (iter_handle == g_callout_handle_map.end()) {
-      iter = g_callout_object_handle_map.erase(iter);
-      continue;
-    }
-    auto *cop = iter_handle->second;
-    if ((cop->ob && ((cop->ob == obj) || (cop->ob->flags & O_DESTRUCTED))) ||
-        (!(cop->ob) && (cop->function.f->hdr.owner == obj || !cop->function.f->hdr.owner ||
-                        (cop->function.f->hdr.owner->flags & O_DESTRUCTED)))) {
-      free_call(cop);
-      g_callout_handle_map.erase(iter_handle);
-      iter = g_callout_object_handle_map.erase(iter);
-      i++;
-    } else {
-      iter++;
-    }
+  while (cop != nullptr) {
+    auto *next = cop->owner_next;
+    detach_call_out_indices(cop);
+    free_call(cop);
+    i++;
+    cop = next;
   }
   DBG_CALLOUT("remove_all_call_out: removed %d callouts.\n", i);
 }
 
 void clear_call_outs() {
   int i = 0;
-  auto iter = g_callout_handle_map.begin();
-  while (iter != g_callout_handle_map.end()) {
-    auto *cop = iter->second;
+  while (!g_callout_handle_map.empty()) {
+    auto *cop = g_callout_handle_map.begin()->second;
+    detach_call_out_indices(cop);
     free_call(cop);
-    iter = g_callout_handle_map.erase(iter);
     i++;
   }
+  g_callout_object_handle_map.clear();
+  clear_call_out_pool();
   debug_message("clear_call_outs: %d leftover callouts cleared.\n", i);
 }
 
@@ -559,8 +649,9 @@ void reclaim_call_outs() {
       auto *cop = iter->second;
       if ((cop->ob && (cop->ob->flags & O_DESTRUCTED)) ||
           (!cop->ob && (cop->function.f->hdr.owner->flags & O_DESTRUCTED))) {
+        iter++;
+        detach_call_out_indices(cop);
         free_call(cop);
-        iter = g_callout_handle_map.erase(iter);
         i++;
       } else {
         iter++;
@@ -569,20 +660,7 @@ void reclaim_call_outs() {
   }
   DBG_CALLOUT("reclaim_call_outs: %d callouts with destructed object.\n", i);
 
-  // GC all invalid object->handle entries
-  i = 0;
-  {
-    auto iter = g_callout_object_handle_map.begin();
-    while (iter != g_callout_object_handle_map.end()) {
-      if (g_callout_handle_map.find(iter->second) == g_callout_handle_map.end()) {
-        iter = g_callout_object_handle_map.erase(iter);
-        i++;
-      } else {
-        iter++;
-      }
-    }
-  }
-  DBG_CALLOUT("reclaim_call_outs: %d garbage in object handle map.\n", i);
+  DBG_CALLOUT("reclaim_call_outs: object owner index keeps no garbage entries.\n");
 
   if (CONFIG_INT(__RC_THIS_PLAYER_IN_CALL_OUT__)) {
     i = 0;

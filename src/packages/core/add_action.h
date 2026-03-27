@@ -12,6 +12,7 @@ void clear_notify(object_t *);
 void stat_living_objects(outbuffer_t *);
 void add_command_enabled(object_t *);
 void remove_command_enabled(object_t *);
+void clear_parse_command_cache(object_t *);
 void remove_living_name(object_t *);
 object_t *find_living_object(const char *, int);
 void setup_new_commands(object_t *, object_t *);
@@ -37,6 +38,9 @@ void remove_sent(object_t *, object_t *);
   } while (0)
 #define remove_command_enabled(x) \
   do {                           \
+  } while (0)
+#define clear_parse_command_cache(x) \
+  do {                              \
   } while (0)
 #define remove_living_name(x) \
   do {                        \

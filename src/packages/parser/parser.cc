@@ -49,6 +49,7 @@ char *pluralize(char *);
 
 enum { MS_HAS_LITERALS = 1, MS_HAS_SPECIALS = 2, MS_HAS_USERS = 4 };
 static int master_state = 0;
+static bool parser_legacy_master_user_loading_for_test = false;
 
 static parse_info_t *pi = nullptr;
 static hash_entry_t *hash_table[HASH_SIZE];
@@ -445,10 +446,16 @@ static int check_special_word(const char *wrd, long *arg) {
   return SW_NONE;
 }
 
-static void interrogate_master() {
+enum { MASTER_LOAD_LITERALS = 1, MASTER_LOAD_SPECIALS = 2, MASTER_LOAD_USERS = 4 };
+
+void set_parser_legacy_master_user_loading_for_test(bool enabled) {
+  parser_legacy_master_user_loading_for_test = enabled;
+}
+
+static void interrogate_master(int flags) {
   svalue_t *ret;
 
-  if ((master_state & MS_HAS_USERS) == 0) {
+  if ((flags & MASTER_LOAD_USERS) && (master_state & MS_HAS_USERS) == 0) {
     DEBUG_PP(("[master::parse_command_users]"));
     if (master_user_list) {
       free_array(master_user_list);
@@ -465,7 +472,7 @@ static void interrogate_master() {
     }
     master_state |= MS_HAS_USERS;
   }
-  if ((master_state & MS_HAS_LITERALS) == 0) {
+  if ((flags & MASTER_LOAD_LITERALS) && (master_state & MS_HAS_LITERALS) == 0) {
     if (literals) {
       int i;
 
@@ -487,7 +494,7 @@ static void interrogate_master() {
     }
     master_state |= MS_HAS_LITERALS;
   }
-  if ((master_state & MS_HAS_SPECIALS) == 0) {
+  if ((flags & MASTER_LOAD_SPECIALS) && (master_state & MS_HAS_SPECIALS) == 0) {
     add_special_word("the", SW_ARTICLE, 0);
 
     add_special_word("me", SW_SELF, 0);
@@ -1226,10 +1233,27 @@ static void add_nicknames(mapping_t *map) {
   }
 }
 
+static bool verb_requires_remote_livings(const verb_t *verb_entry) {
+  if (parser_legacy_master_user_loading_for_test || verb_entry == nullptr) {
+    return true;
+  }
+
+  for (auto *node = verb_entry->node; node != nullptr; node = node->next) {
+    if (node->handler != nullptr && node->handler->pinfo != nullptr &&
+        (node->handler->pinfo->flags & PI_REMOTE_LIVINGS)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static void load_objects() {
   int i;
   object_t *ob, *env;
+  object_t *parse_root = nullptr;
   hash_entry_t *he;
+  const bool needs_remote_users = verb_requires_remote_livings(parse_verb_entry);
 
   if (!my_string) {
     my_string = make_shared_string("my");
@@ -1257,11 +1281,13 @@ static void load_objects() {
       error("No this_player()!\n");
     }
 
-    find_uninited_objects(super(parse_user));
+    parse_root = super(parse_user);
+    find_uninited_objects(parse_root);
   }
-  /* get users from master object */
-  interrogate_master();
-  init_users();
+  if (needs_remote_users) {
+    interrogate_master(MASTER_LOAD_USERS);
+    init_users();
+  }
   objects_loaded = 1;
   /* Step 2: */
   for (i = 0; i < num_objects; i++) {
@@ -1278,7 +1304,7 @@ static void load_objects() {
   if (parse_env) {
     add_objects_from_array(parse_env, RAO_INREACH);
   } else {
-    rec_add_object(super(parse_user), RAO_INREACH);
+    rec_add_object(parse_root, RAO_INREACH);
   }
   he = add_hash_entry(my_string);
   he->flags |= HV_ADJ;
@@ -1288,34 +1314,39 @@ static void load_objects() {
   }
 
   num_people = 0;
-  for (i = 0; i < master_user_list->size; i++) {
-    if (master_user_list->item[i].type != T_OBJECT) {
-      continue;
+  if (needs_remote_users) {
+    if (!parse_env) {
+      parse_root = super(parse_user);
     }
-    /* check if we have them already */
-    ob = master_user_list->item[i].u.ob;
-    if (!(ob->pinfo)) {
-      continue;
-    }
-    env = ob;
-    while (env) {
-      if (env == super(parse_user)) {
+    for (i = 0; i < master_user_list->size; i++) {
+      if (master_user_list->item[i].type != T_OBJECT) {
+        continue;
+      }
+      /* check if we have them already */
+      ob = master_user_list->item[i].u.ob;
+      if (!(ob->pinfo)) {
+        continue;
+      }
+      env = ob;
+      while (env) {
+        if (env == parse_root) {
+          break;
+        }
+        env = super(env);
+        if (env && env->pinfo && !(env->pinfo->flags & PI_INV_VISIBLE)) {
+          env = nullptr;
+        }
+      }
+      if (env) {
+        continue;
+      }
+      if (num_objects + num_people == MAX_NUM_OBJECTS) {
         break;
       }
-      env = super(env);
-      if (env && env->pinfo && !(env->pinfo->flags & PI_INV_VISIBLE)) {
-        env = nullptr;
-      }
+      object_flags[num_objects + num_people] = 1;
+      loaded_objects[num_objects + num_people++] = ob;
+      add_ref(ob, "load_objects");
     }
-    if (env) {
-      continue;
-    }
-    if (num_objects + num_people == MAX_NUM_OBJECTS) {
-      break;
-    }
-    object_flags[num_objects + num_people] = 1;
-    loaded_objects[num_objects + num_people++] = ob;
-    add_ref(ob, "load_objects");
   }
   num_objects += num_people;
 
@@ -3482,7 +3513,7 @@ void f_parse_add_rule() {
     error("/%s is not known by the parser.  Call parse_init() first.\n", handler->obname);
 
   /* We need the literals */
-  interrogate_master();
+  interrogate_master(MASTER_LOAD_LITERALS | MASTER_LOAD_SPECIALS);
 
   /* Create the rule */
   make_rule(rule, tokens, &weight);

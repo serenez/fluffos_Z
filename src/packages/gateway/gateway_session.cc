@@ -557,6 +557,7 @@ int gateway_inject_input_internal(object_t* user, const char* input) {
     }
 
     // 直接 memcpy，避免中间字符串分配
+    interactive_invalidate_command_cache(ip);
     memcpy(ip->text + ip->text_end, input, input_len);
     ip->text_end += input_len;
     ip->text[ip->text_end++] = '\n';

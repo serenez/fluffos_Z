@@ -222,6 +222,7 @@ typedef struct {
 } parse_result_t;
 
 void parse_free(parse_info_t *);
+void set_parser_legacy_master_user_loading_for_test(bool enabled);
 #ifdef DEBUGMALLOC_EXTENSIONS
 void parser_mark_verbs();
 void parser_mark(parse_info_t *);

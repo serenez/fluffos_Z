@@ -248,6 +248,7 @@ struct program_t {
   unsigned short num_variables_total; /* total number of variables including inherited */
   unsigned short num_variables_defined; /* total number of variables defined by this program */
   unsigned short num_inherited;
+  unsigned char init_lookup_state;
 
   // A lookup table to make lookup function by name faster.
   //

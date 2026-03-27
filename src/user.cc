@@ -36,6 +36,14 @@ int next_text_capacity(int current_capacity, int required_size) {
 
 }  // namespace
 
+void interactive_invalidate_command_cache(interactive_t *user) {
+  if (!user) {
+    return;
+  }
+
+  user->text_command_end = -1;
+}
+
 interactive_t *user_add() {
   auto *user = reinterpret_cast<interactive_t *>(
       DMALLOC(sizeof(interactive_t), TAG_INTERACTIVE, "new_conn_handler"));
@@ -43,6 +51,7 @@ interactive_t *user_add() {
     return nullptr;
   }
   memset(user, 0, sizeof(*user));
+  interactive_invalidate_command_cache(user);
   if (!interactive_ensure_text_capacity(user, INTERACTIVE_TEXT_INITIAL_CAPACITY)) {
     FREE(user);
     return nullptr;
@@ -91,9 +100,15 @@ void interactive_compact_text(interactive_t *user) {
   }
 
   if (user->text_start > 0 && user->text_end > user->text_start) {
+    int const shift = user->text_start;
     memmove(user->text, user->text + user->text_start, user->text_end - user->text_start);
     user->text_end -= user->text_start;
     user->text_start = 0;
+    if (user->text_command_end >= shift) {
+      user->text_command_end -= shift;
+    } else {
+      interactive_invalidate_command_cache(user);
+    }
   } else if (user->text_start >= user->text_end) {
     interactive_reset_text(user);
     return;
@@ -111,6 +126,7 @@ void interactive_reset_text(interactive_t *user) {
 
   user->text_start = 0;
   user->text_end = 0;
+  interactive_invalidate_command_cache(user);
   if (user->text && user->text_capacity > 0) {
     user->text[0] = '\0';
   }
@@ -128,6 +144,7 @@ void interactive_free_text(interactive_t *user) {
   user->text_capacity = 0;
   user->text_start = 0;
   user->text_end = 0;
+  interactive_invalidate_command_cache(user);
 }
 
 // Get a copy of all users

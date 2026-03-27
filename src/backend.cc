@@ -20,10 +20,10 @@
 #endif
 #endif
 #include <sys/types.h>  // for int64_t
-#include <deque>        // for deque
 #include <functional>   // for _Bind, less, bind, function
-#include <map>          // for multimap, _Rb_tree_iterator
+#include <map>          // for map
 #include <utility>      // for pair, make_pair
+#include <vector>
 #include <algorithm>
 
 #include "vm/vm.h"
@@ -113,8 +113,14 @@ inline struct timeval gametick_timeval() {
 }
 
 // Global structure to holding all events to be executed on gameticks.
-using TickQueue = std::multimap<decltype(g_current_gametick), TickEvent *, std::less<>>;
+using TickBucket = std::vector<TickEvent *>;
+using TickQueue = std::map<decltype(g_current_gametick), TickBucket, std::less<>>;
 TickQueue g_tick_queue;
+
+void enqueue_tick_event(decltype(g_current_gametick) due_tick, TickEvent *event) {
+  auto [iter, inserted] = g_tick_queue.try_emplace(due_tick);
+  iter->second.push_back(event);
+}
 
 // Call all events for current tick
 inline void call_tick_events() {
@@ -128,24 +134,16 @@ inline void call_tick_events() {
   // callback, We need to keep looping until there isn't any eligible events
   // left.
   while (true) {
-    std::deque<TickEvent *> all_events;
-    auto iter_end = g_tick_queue.upper_bound(g_current_gametick);
-    // No more eligible events.
-    if (iter_end == g_tick_queue.begin()) {
+    auto iter = g_tick_queue.begin();
+    if (iter == g_tick_queue.end() || iter->first > g_current_gametick) {
       break;
     }
-    auto iter_start = g_tick_queue.begin();
-
-    // Extract all eligible events
-    all_events.clear();
-    for (auto iter = iter_start; iter != iter_end; iter++) {
-      all_events.push_back(iter->second);
-    }
-    g_tick_queue.erase(iter_start, iter_end);
+    auto due_events = std::move(iter->second);
+    g_tick_queue.erase(iter);
 
     // TODO: randomly shuffle the events
 
-    for (auto *event : all_events) {
+    for (auto *event : due_events) {
       if (event->valid) {
         event->callback();
       }
@@ -166,8 +164,8 @@ void on_game_tick(evutil_socket_t /*fd*/, short /*what*/, void *arg) {
 }  // namespace
 
 TickEvent *add_gametick_event(int delay_ticks, TickEvent::callback_type callback) {
-  auto *event = new TickEvent(callback);
-  g_tick_queue.insert(TickQueue::value_type(g_current_gametick + delay_ticks, event));
+  auto *event = new TickEvent(std::move(callback));
+  enqueue_tick_event(g_current_gametick + delay_ticks, event);
   return event;
 }
 
@@ -189,7 +187,7 @@ void on_walltime_event(evutil_socket_t /*fd*/, short /*what*/, void *arg) {
 // Schedule a immediate event on main loop.
 TickEvent *add_walltime_event(std::chrono::milliseconds delay_msecs,
                               TickEvent::callback_type callback) {
-  auto *event = new TickEvent(callback);
+  auto *event = new TickEvent(std::move(callback));
   struct timeval val {
     (int)(delay_msecs.count() / 1000), (int)(delay_msecs.count() % 1000 * 1000),
   };
@@ -205,8 +203,10 @@ void clear_tick_events() {
   int i = 0;
   if (!g_tick_queue.empty()) {
     for (auto &iter : g_tick_queue) {
-      delete iter.second;
-      i++;
+      for (auto *event : iter.second) {
+        delete event;
+        i++;
+      }
     }
     g_tick_queue.clear();
   }

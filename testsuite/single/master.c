@@ -13,6 +13,8 @@ nosave string test_domain_override = 0;
 nosave string test_author_override = 0;
 nosave string test_input_snapshot = 0;
 nosave string *test_input_history_snapshot = ({});
+nosave object *test_parse_command_users_override = 0;
+nosave int test_parse_command_users_calls = 0;
 
 public string clear_last_error() {
   last_error = "";
@@ -50,6 +52,31 @@ public void reset_test_stat_overrides() {
 public void clear_test_input_snapshot() {
   test_input_snapshot = 0;
   test_input_history_snapshot = ({});
+}
+
+public void clear_test_parse_command_users_state() {
+  test_parse_command_users_override = 0;
+  test_parse_command_users_calls = 0;
+}
+
+public void set_test_parse_command_users_override(object *obs) {
+  test_parse_command_users_override = obs;
+}
+
+public int query_test_parse_command_users_calls() {
+  return test_parse_command_users_calls;
+}
+
+public void refresh_parser_users_cache() {
+  parse_refresh();
+}
+
+object *parse_command_users() {
+  test_parse_command_users_calls++;
+  if (pointerp(test_parse_command_users_override)) {
+    return test_parse_command_users_override;
+  }
+  return users();
 }
 
 public void set_test_input_snapshot(string value, string *history) {

@@ -1192,6 +1192,8 @@ void destruct2(object_t *ob) {
    * a function pointer that is bound to this object and thus holds a
    * reference to this object.
    */
+  clear_parse_command_cache(ob);
+  ob->sent_owners = nullptr;
   for (s = ob->sent; s;) {
     sentence_t *next;
 
@@ -1674,6 +1676,9 @@ sentence_t *alloc_sentence() {
   }
 #ifndef NO_ADD_ACTION
   p->verb = nullptr;
+  p->prev = nullptr;
+  p->owner_next = nullptr;
+  p->owner_head_next = nullptr;
 #endif
   p->function.s = nullptr;
   p->next = nullptr;
@@ -1718,6 +1723,9 @@ void free_sentence(sentence_t *p) {
     free_string(p->verb);
   }
   p->verb = nullptr;
+  p->prev = nullptr;
+  p->owner_next = nullptr;
+  p->owner_head_next = nullptr;
 #endif
   p->next = sent_free;
   sent_free = p;

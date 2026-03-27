@@ -2760,6 +2760,7 @@ static program_t *epilog(void) {
   prog->total_size = size;
   prog->ref = 0;
   prog->func_ref = 0;
+  prog->init_lookup_state = 0;
   ihe = lookup_ident("heart_beat");
   if (ihe && ihe->dn.function_num != -1) {
     prog->heart_beat = comp_def_index_map[ihe->dn.function_num] + 1;

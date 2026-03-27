@@ -18,6 +18,8 @@ struct array_t *get_heart_beats();
 
 // Used by backend.cc
 void call_heart_beat();
+// Used by tests/benchmarks to run a single cycle without scheduling the next tick.
+void run_heartbeat_cycle_for_test();
 
 // Used by md.cc for verifying.
 void check_heartbeats();

@@ -112,6 +112,202 @@ bool mud_packet_is_complete(int packet_size, int text_end) {
   return packet_size > 0 && text_end == packet_size + static_cast<int>(sizeof(uint32_t));
 }
 
+namespace {
+
+bool buffered_mud_packet_is_complete(int packet_size, int text_end) {
+  return packet_size > 0 && text_end >= packet_size + static_cast<int>(sizeof(uint32_t));
+}
+
+void record_network_read(int external_port_index, int num_bytes) {
+  if (num_bytes <= 0) {
+    return;
+  }
+
+#ifdef F_NETWORK_STATS
+  inet_in_packets++;
+  inet_in_volume += num_bytes;
+  external_port[external_port_index].in_packets++;
+  external_port[external_port_index].in_volume += num_bytes;
+#endif
+}
+
+bool prepare_mud_read_capacity(interactive_t *ip, int *text_space) {
+  if (!ip || !text_space) {
+    return false;
+  }
+
+  if (ip->text_end < static_cast<int>(sizeof(uint32_t))) {
+    if (!interactive_ensure_text_capacity(ip, static_cast<int>(sizeof(uint32_t)) + 1)) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return false;
+    }
+    *text_space = static_cast<int>(sizeof(uint32_t)) - ip->text_end;
+  } else {
+    int packet_size = 0;
+    if (!decode_mud_packet_size(ip->text, &packet_size)) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return false;
+    }
+    if (!interactive_ensure_text_capacity(ip, packet_size + 5)) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return false;
+    }
+    *text_space = packet_size - ip->text_end + static_cast<int>(sizeof(uint32_t));
+    if (*text_space <= 0) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void consume_buffered_mud_packet(interactive_t *ip, int consumed_bytes) {
+  if (!ip || consumed_bytes <= 0) {
+    return;
+  }
+
+  int const remaining = ip->text_end - consumed_bytes;
+  if (remaining <= 0) {
+    interactive_reset_text(ip);
+    return;
+  }
+
+  memmove(ip->text, ip->text + consumed_bytes, remaining);
+  ip->text_end = remaining;
+  ip->text_start = 0;
+  interactive_invalidate_command_cache(ip);
+  ip->text[ip->text_end] = '\0';
+}
+
+bool process_one_buffered_mud_packet(interactive_t *ip) {
+  if (!ip || !ip->ob || ip->text_end < static_cast<int>(sizeof(uint32_t))) {
+    return false;
+  }
+
+  int packet_size = 0;
+  if (!decode_mud_packet_size(ip->text, &packet_size)) {
+    ip->iflags |= NET_DEAD;
+    remove_interactive(ip->ob, 0);
+    return false;
+  }
+  if (!buffered_mud_packet_is_complete(packet_size, ip->text_end)) {
+    return false;
+  }
+
+  svalue_t value;
+  int const consumed_bytes = packet_size + static_cast<int>(sizeof(uint32_t));
+
+  ip->text[ip->text_end] = '\0';
+  if (restore_svalue(ip->text + static_cast<int>(sizeof(uint32_t)), &value) == 0) {
+    STACK_INC;
+    *sp = value;
+  } else {
+    push_undefined();
+  }
+
+  consume_buffered_mud_packet(ip, consumed_bytes);
+
+  auto *owner = ip->ob;
+  add_ref(owner, "process_one_buffered_mud_packet");
+  set_eval(max_eval_cost);
+  safe_apply(APPLY_PROCESS_INPUT, owner, 1, ORIGIN_DRIVER);
+  auto *current_owner = ip->ob;
+  bool still_attached =
+      current_owner && !(current_owner->flags & O_DESTRUCTED) && current_owner->interactive == ip;
+  free_object(&owner, "process_one_buffered_mud_packet");
+  return still_attached;
+}
+
+int process_buffered_mud_packets(interactive_t *ip) {
+  int processed = 0;
+  while (true) {
+    if (!ip || !ip->ob || ip->text_end < static_cast<int>(sizeof(uint32_t))) {
+      return processed;
+    }
+
+    int packet_size = 0;
+    if (!decode_mud_packet_size(ip->text, &packet_size)) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return processed;
+    }
+    if (!buffered_mud_packet_is_complete(packet_size, ip->text_end)) {
+      return processed;
+    }
+    processed++;
+    if (!process_one_buffered_mud_packet(ip)) {
+      return processed;
+    }
+  }
+}
+
+int process_mud_chunk_internal(interactive_t *ip, const unsigned char *buf, int num_bytes) {
+  if (!ip || !buf || num_bytes <= 0) {
+    return 0;
+  }
+  if (!interactive_ensure_text_capacity(ip, ip->text_end + num_bytes + 1)) {
+    if (ip->ob) {
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+    }
+    return 0;
+  }
+
+  interactive_invalidate_command_cache(ip);
+  memcpy(ip->text + ip->text_end, buf, num_bytes);
+  ip->text_end += num_bytes;
+  return process_buffered_mud_packets(ip);
+}
+
+void get_user_data_mud(interactive_t *ip) {
+  unsigned char buf[kUserReadChunkSize];
+
+  while (true) {
+    int text_space = 0;
+    if (!prepare_mud_read_capacity(ip, &text_space)) {
+      return;
+    }
+    if (text_space > static_cast<int>(sizeof(buf))) {
+      text_space = sizeof(buf);
+    }
+
+    int num_bytes = bufferevent_read(ip->ev_buffer, buf, text_space);
+    if (num_bytes == -1) {
+      debug(connections, "get_user_data: fd %d, read error: %s.\n", ip->fd,
+            evutil_socket_error_to_string(evutil_socket_geterror(ip->fd)));
+      ip->iflags |= NET_DEAD;
+      remove_interactive(ip->ob, 0);
+      return;
+    }
+    if (num_bytes <= 0) {
+      break;
+    }
+
+    record_network_read(ip->external_port, num_bytes);
+    process_mud_chunk_internal(ip, buf, num_bytes);
+
+    if (!ip->ob || (ip->ob->flags & O_DESTRUCTED) || ip->ob->interactive != ip) {
+      return;
+    }
+
+    auto *input = bufferevent_get_input(ip->ev_buffer);
+    if (!input || evbuffer_get_length(input) == 0) {
+      break;
+    }
+    if (ip->text_end > 0) {
+      break;
+    }
+  }
+
+}
+
+}  // namespace
+
 void maybe_schedule_user_command(interactive_t *user) {
   // If user has a complete command, schedule a command execution.
   if (user->iflags & CMD_IN_BUF) {
@@ -155,9 +351,36 @@ char *find_ascii_line_break(char *line_start, char *buffer_end) {
   return newline < carriage_return ? newline : carriage_return;
 }
 
+bool cached_command_end_is_valid(interactive_t *ip) {
+  return ip && ip->text && ip->text_command_end >= ip->text_start &&
+         ip->text_command_end < ip->text_end &&
+         (ip->text[ip->text_command_end] == '\r' || ip->text[ip->text_command_end] == '\n');
+}
+
+int find_buffered_command_end(interactive_t *ip) {
+  if (!ip || !ip->text) {
+    return -1;
+  }
+
+  if (cached_command_end_is_valid(ip)) {
+    return ip->text_command_end;
+  }
+
+  for (int i = ip->text_start; i < ip->text_end; i++) {
+    if (ip->text[i] == '\r' || ip->text[i] == '\n') {
+      ip->text_command_end = i;
+      return i;
+    }
+  }
+
+  interactive_invalidate_command_cache(ip);
+  return -1;
+}
+
 int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, int num_bytes) {
   int processed = 0;
 
+  interactive_invalidate_command_cache(ip);
   memcpy(ip->text + ip->text_end, buf, num_bytes);
   ip->text_end += num_bytes;
 
@@ -1031,6 +1254,11 @@ void get_user_data(interactive_t *ip) {
 
   debug(connections, "get_user_data: USER %d\n", ip->fd);
 
+  if (ip->connection_type == PORT_TYPE_MUD) {
+    get_user_data_mud(ip);
+    return;
+  }
+
   /* compute how much data we can read right now */
   switch (ip->connection_type) {
     case PORT_TYPE_WEBSOCKET:
@@ -1047,36 +1275,6 @@ void get_user_data(interactive_t *ip) {
         }
       }
       text_space = ip->text_capacity - ip->text_end - 1;
-      if (text_space > static_cast<int>(sizeof(buf))) text_space = sizeof(buf);
-      break;
-
-    case PORT_TYPE_MUD:
-      if (ip->text_end < 4) {
-        if (!interactive_ensure_text_capacity(ip, 5)) {
-          ip->iflags |= NET_DEAD;
-          remove_interactive(ip->ob, 0);
-          return;
-        }
-        text_space = 4 - ip->text_end;
-      } else {
-        int packet_size = 0;
-        if (!decode_mud_packet_size(ip->text, &packet_size)) {
-          ip->iflags |= NET_DEAD;
-          remove_interactive(ip->ob, 0);
-          return;
-        }
-        if (!interactive_ensure_text_capacity(ip, packet_size + 5)) {
-          ip->iflags |= NET_DEAD;
-          remove_interactive(ip->ob, 0);
-          return;
-        }
-        text_space = packet_size - ip->text_end + 4;
-        if (text_space <= 0) {
-          ip->iflags |= NET_DEAD;
-          remove_interactive(ip->ob, 0);
-          return;
-        }
-      }
       if (text_space > static_cast<int>(sizeof(buf))) text_space = sizeof(buf);
       break;
 
@@ -1112,12 +1310,7 @@ void get_user_data(interactive_t *ip) {
     return;
   }
 
-#ifdef F_NETWORK_STATS
-  inet_in_packets++;
-  inet_in_volume += num_bytes;
-  external_port[ip->external_port].in_packets++;
-  external_port[ip->external_port].in_volume += num_bytes;
-#endif
+  record_network_read(ip->external_port, num_bytes);
 
   /* process the data that we've just read */
 
@@ -1149,40 +1342,6 @@ void get_user_data(interactive_t *ip) {
       }
       break;
     }
-    case PORT_TYPE_MUD: {
-      memcpy(ip->text + ip->text_end, buf, num_bytes);
-      ip->text_end += num_bytes;
-
-      if (ip->text_end < static_cast<int>(sizeof(uint32_t))) {
-        break;
-      }
-
-      int packet_size = 0;
-      if (!decode_mud_packet_size(ip->text, &packet_size)) {
-        ip->iflags |= NET_DEAD;
-        remove_interactive(ip->ob, 0);
-        return;
-      }
-
-      if (!mud_packet_is_complete(packet_size, ip->text_end)) {
-        break;
-      }
-
-      svalue_t value;
-
-      ip->text[ip->text_end] = 0;
-      if (restore_svalue(ip->text + 4, &value) == 0) {
-        STACK_INC;
-        *sp = value;
-      } else {
-        push_undefined();
-      }
-      ip->text_end = 0;
-      set_eval(max_eval_cost);
-      safe_apply(APPLY_PROCESS_INPUT, ip->ob, 1, ORIGIN_DRIVER);
-      break;
-    }
-
     case PORT_TYPE_ASCII:
       process_ascii_chunk_internal(ip, buf, num_bytes);
       break;
@@ -1212,6 +1371,7 @@ static int clean_buf(interactive_t *ip) {
     // consuming the returned pointer from first_cmd_in_buf().
     ip->text_start = 0;
     ip->text_end = 0;
+    interactive_invalidate_command_cache(ip);
   }
 
   /* if we're skipping the current command, check to see if it has been
@@ -1223,9 +1383,14 @@ static int clean_buf(interactive_t *ip) {
       if (*p == '\r' || *p == '\n') {
         ip->text_start += p - (ip->text + ip->text_start) + 1;
         ip->iflags &= ~SKIP_COMMAND;
+        interactive_invalidate_command_cache(ip);
         return clean_buf(ip);
       }
     }
+  }
+
+  if (ip->text_command_end >= 0 && ip->text_command_end < ip->text_start) {
+    interactive_invalidate_command_cache(ip);
   }
 
   return (ip->text_end > ip->text_start);
@@ -1292,6 +1457,7 @@ static const int ANSI_SUBSTITUTE = 0x20;
 // client will actually send entire line. In ascii mode, we will get an single char input
 // each time.
 void on_user_input(interactive_t *ip, const char *data, size_t len) {
+  interactive_invalidate_command_cache(ip);
   for (size_t i = 0; i < len; i++) {
     if (ip->text_end >= ip->text_capacity - 1 && !ensure_text_tail_capacity(ip, 2)) {
       // No more space
@@ -1324,8 +1490,6 @@ void on_user_input(interactive_t *ip, const char *data, size_t len) {
 
 // Also used by ws_ascii.
 int cmd_in_buf(interactive_t *ip) {
-  char *p;
-
   /* do standard input buffer cleanup */
   if (!clean_buf(ip)) {
     return 0;
@@ -1336,18 +1500,10 @@ int cmd_in_buf(interactive_t *ip) {
     return 1;
   }
 
-  for (p = ip->text + ip->text_start; p < ip->text + ip->text_end; p++) {
-    if (*p == '\r' || *p == '\n') {
-      return 1;
-    }
-  }
-
-  /* duh, no command */
-  return 0;
+  return find_buffered_command_end(ip) >= 0;
 }
 
 static char *first_cmd_in_buf(interactive_t *ip) {
-  char *p;
   static char tmp[2];
 
   /* do standard input buffer cleanup */
@@ -1355,7 +1511,7 @@ static char *first_cmd_in_buf(interactive_t *ip) {
     return nullptr;
   }
 
-  p = ip->text + ip->text_start;
+  auto *p = ip->text + ip->text_start;
 
   /* if we're in single character mode, we've got input */
   if (ip->iflags & SINGLE_CHAR) {
@@ -1364,17 +1520,20 @@ static char *first_cmd_in_buf(interactive_t *ip) {
     }
     tmp[0] = *p;
     ip->text[ip->text_start++] = 0;
+    interactive_invalidate_command_cache(ip);
     if (!clean_buf(ip)) {
       ip->iflags &= ~CMD_IN_BUF;
     }
     return tmp;
   }
 
-  /* search for the newline */
-  while (ip->text_start < ip->text_end && ip->text[ip->text_start] != '\n' &&
-         ip->text[ip->text_start] != '\r') {
-    ip->text_start++;
+  int command_end = find_buffered_command_end(ip);
+  if (command_end < 0) {
+    ip->iflags &= ~CMD_IN_BUF;
+    return nullptr;
   }
+
+  ip->text_start = command_end;
 
   /* check for "\r\n" or "\n\r" */
   if (ip->text_start + 1 < ip->text_end &&
@@ -1384,6 +1543,7 @@ static char *first_cmd_in_buf(interactive_t *ip) {
   }
 
   ip->text[ip->text_start++] = 0;
+  interactive_invalidate_command_cache(ip);
 
   if (!cmd_in_buf(ip)) {
     ip->iflags &= ~CMD_IN_BUF;
@@ -1430,8 +1590,20 @@ static char *get_user_command(interactive_t *ip) {
 
 char *extract_first_command_for_test(interactive_t *ip) { return first_cmd_in_buf(ip); }
 
+int cached_command_end_for_test(interactive_t *ip) {
+  if (!ip) {
+    return -1;
+  }
+
+  return ip->text_command_end;
+}
+
 int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes) {
   return process_ascii_chunk_internal(ip, buf, num_bytes);
+}
+
+int process_mud_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes) {
+  return process_mud_chunk_internal(ip, buf, num_bytes);
 }
 
 bool schedule_user_logon(event_base *base, interactive_t *user) {
@@ -1857,8 +2029,7 @@ static int call_function_interactive(interactive_t *i, char *str) {
   if (!(ob->flags & O_DESTRUCTED) && ob->interactive) {
     i = ob->interactive;
     if (was_single && !(i->iflags & SINGLE_CHAR)) {
-      i->text_start = i->text_end = 0;
-      i->text[0] = '\0';
+      interactive_reset_text(i);
       i->iflags &= ~CMD_IN_BUF;
       set_linemode(i, true);
     }

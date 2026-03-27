@@ -5,5 +5,6 @@ int parse(const char *, svalue_t *, const char *, svalue_t *, int);
 char *process_string(char *);
 svalue_t *process_value(char *);
 char *break_string(char *, int, svalue_t *);
+void set_parse_command_legacy_mode_for_test(bool enabled);
 
 #endif

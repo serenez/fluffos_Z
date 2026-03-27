@@ -63,6 +63,7 @@ struct interactive_t {
   int text_capacity;   /* allocated bytes in input buffer         */
   int text_end;        /* first free char in buffer               */
   int text_start;      /* where we are up to in user command buffer */
+  int text_command_end; /* cached '\r'/'\n' index, -1 means unknown */
   time_t last_time;    /* time of last command executed           */
 #ifndef NO_SNOOP
   struct object_t *snooped_by;
