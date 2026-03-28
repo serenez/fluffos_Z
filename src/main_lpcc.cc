@@ -12,6 +12,7 @@
 #include "compiler/internal/disassembler.h"
 #include "base/internal/rc.h"
 #include "base/internal/tracing.h"
+#include "vm/internal/simulate.h"
 #include "vm/vm.h"
 
 int main(int argc, char** argv) {
@@ -90,6 +91,7 @@ int main(int argc, char** argv) {
 
   if (obj == nullptr || obj->prog == nullptr) {
     fprintf(stderr, "Fail to load object %s. \n", file);
+    shutdownMudOS(1);
     return 1;
   }
 
@@ -99,7 +101,7 @@ int main(int argc, char** argv) {
     dump_prog(obj->prog, stdout, 1 | 2);
   }
 
-  clear_state();
+  shutdownMudOS(0);
 
   return 0;
 }
