@@ -2744,53 +2744,6 @@ TEST_F(DriverTest, TestExtractFirstCommandPreservesLastBufferedLineCommand) {
   FREE(ip);
 }
 
-TEST_F(DriverTest, TestCmdInBufCachesBufferedCommandEndAcrossExtraction) {
-  auto *ip = user_add();
-  ASSERT_NE(ip, nullptr);
-  ASSERT_NE(ip->text, nullptr);
-
-  std::memcpy(ip->text, "look\nsay\n", 9);
-  ip->text_end = 9;
-  ip->text_start = 0;
-
-  EXPECT_EQ(-1, cached_command_end_for_test(ip));
-  EXPECT_TRUE(cmd_in_buf(ip));
-  EXPECT_EQ(4, cached_command_end_for_test(ip));
-
-  auto *first = extract_first_command_for_test(ip);
-  ASSERT_NE(first, nullptr);
-  EXPECT_STREQ("look", first);
-  EXPECT_EQ(8, cached_command_end_for_test(ip));
-
-  auto *second = extract_first_command_for_test(ip);
-  ASSERT_NE(second, nullptr);
-  EXPECT_STREQ("say", second);
-  EXPECT_EQ(-1, cached_command_end_for_test(ip));
-
-  user_del(ip);
-  interactive_free_text(ip);
-  FREE(ip);
-}
-
-TEST_F(DriverTest, TestOnUserInputBackspaceInvalidatesCachedCommandEnd) {
-  auto *ip = user_add();
-  ASSERT_NE(ip, nullptr);
-  ASSERT_NE(ip->text, nullptr);
-
-  on_user_input(ip, "look\n", 5);
-  EXPECT_TRUE(cmd_in_buf(ip));
-  EXPECT_EQ(4, cached_command_end_for_test(ip));
-
-  on_user_input(ip, "\b", 1);
-  EXPECT_EQ(-1, cached_command_end_for_test(ip));
-  EXPECT_FALSE(cmd_in_buf(ip));
-  EXPECT_EQ(-1, cached_command_end_for_test(ip));
-
-  user_del(ip);
-  interactive_free_text(ip);
-  FREE(ip);
-}
-
 TEST_F(DriverTest, TestProcessUserCommandKeepsLastLineBufferedCommandIntact) {
   object_t *ob = nullptr;
 

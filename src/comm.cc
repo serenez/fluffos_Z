@@ -180,7 +180,6 @@ void consume_buffered_mud_packet(interactive_t *ip, int consumed_bytes) {
   memmove(ip->text, ip->text + consumed_bytes, remaining);
   ip->text_end = remaining;
   ip->text_start = 0;
-  interactive_invalidate_command_cache(ip);
   ip->text[ip->text_end] = '\0';
 }
 
@@ -258,7 +257,6 @@ int process_mud_chunk_internal(interactive_t *ip, const unsigned char *buf, int 
     return 0;
   }
 
-  interactive_invalidate_command_cache(ip);
   memcpy(ip->text + ip->text_end, buf, num_bytes);
   ip->text_end += num_bytes;
   return process_buffered_mud_packets(ip);
@@ -351,36 +349,9 @@ char *find_ascii_line_break(char *line_start, char *buffer_end) {
   return newline < carriage_return ? newline : carriage_return;
 }
 
-bool cached_command_end_is_valid(interactive_t *ip) {
-  return ip && ip->text && ip->text_command_end >= ip->text_start &&
-         ip->text_command_end < ip->text_end &&
-         (ip->text[ip->text_command_end] == '\r' || ip->text[ip->text_command_end] == '\n');
-}
-
-int find_buffered_command_end(interactive_t *ip) {
-  if (!ip || !ip->text) {
-    return -1;
-  }
-
-  if (cached_command_end_is_valid(ip)) {
-    return ip->text_command_end;
-  }
-
-  for (int i = ip->text_start; i < ip->text_end; i++) {
-    if (ip->text[i] == '\r' || ip->text[i] == '\n') {
-      ip->text_command_end = i;
-      return i;
-    }
-  }
-
-  interactive_invalidate_command_cache(ip);
-  return -1;
-}
-
 int process_ascii_chunk_internal(interactive_t *ip, const unsigned char *buf, int num_bytes) {
   int processed = 0;
 
-  interactive_invalidate_command_cache(ip);
   memcpy(ip->text + ip->text_end, buf, num_bytes);
   ip->text_end += num_bytes;
 
@@ -1371,7 +1342,6 @@ static int clean_buf(interactive_t *ip) {
     // consuming the returned pointer from first_cmd_in_buf().
     ip->text_start = 0;
     ip->text_end = 0;
-    interactive_invalidate_command_cache(ip);
   }
 
   /* if we're skipping the current command, check to see if it has been
@@ -1383,14 +1353,9 @@ static int clean_buf(interactive_t *ip) {
       if (*p == '\r' || *p == '\n') {
         ip->text_start += p - (ip->text + ip->text_start) + 1;
         ip->iflags &= ~SKIP_COMMAND;
-        interactive_invalidate_command_cache(ip);
         return clean_buf(ip);
       }
     }
-  }
-
-  if (ip->text_command_end >= 0 && ip->text_command_end < ip->text_start) {
-    interactive_invalidate_command_cache(ip);
   }
 
   return (ip->text_end > ip->text_start);
@@ -1457,7 +1422,6 @@ static const int ANSI_SUBSTITUTE = 0x20;
 // client will actually send entire line. In ascii mode, we will get an single char input
 // each time.
 void on_user_input(interactive_t *ip, const char *data, size_t len) {
-  interactive_invalidate_command_cache(ip);
   for (size_t i = 0; i < len; i++) {
     if (ip->text_end >= ip->text_capacity - 1 && !ensure_text_tail_capacity(ip, 2)) {
       // No more space
@@ -1490,6 +1454,7 @@ void on_user_input(interactive_t *ip, const char *data, size_t len) {
 
 // Also used by ws_ascii.
 int cmd_in_buf(interactive_t *ip) {
+  char *p;
   /* do standard input buffer cleanup */
   if (!clean_buf(ip)) {
     return 0;
@@ -1500,10 +1465,17 @@ int cmd_in_buf(interactive_t *ip) {
     return 1;
   }
 
-  return find_buffered_command_end(ip) >= 0;
+  for (p = ip->text + ip->text_start; p < ip->text + ip->text_end; p++) {
+    if (*p == '\r' || *p == '\n') {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 static char *first_cmd_in_buf(interactive_t *ip) {
+  char *p;
   static char tmp[2];
 
   /* do standard input buffer cleanup */
@@ -1511,7 +1483,7 @@ static char *first_cmd_in_buf(interactive_t *ip) {
     return nullptr;
   }
 
-  auto *p = ip->text + ip->text_start;
+  p = ip->text + ip->text_start;
 
   /* if we're in single character mode, we've got input */
   if (ip->iflags & SINGLE_CHAR) {
@@ -1520,20 +1492,16 @@ static char *first_cmd_in_buf(interactive_t *ip) {
     }
     tmp[0] = *p;
     ip->text[ip->text_start++] = 0;
-    interactive_invalidate_command_cache(ip);
     if (!clean_buf(ip)) {
       ip->iflags &= ~CMD_IN_BUF;
     }
     return tmp;
   }
 
-  int command_end = find_buffered_command_end(ip);
-  if (command_end < 0) {
-    ip->iflags &= ~CMD_IN_BUF;
-    return nullptr;
+  while (ip->text_start < ip->text_end && ip->text[ip->text_start] != '\n' &&
+         ip->text[ip->text_start] != '\r') {
+    ip->text_start++;
   }
-
-  ip->text_start = command_end;
 
   /* check for "\r\n" or "\n\r" */
   if (ip->text_start + 1 < ip->text_end &&
@@ -1543,7 +1511,6 @@ static char *first_cmd_in_buf(interactive_t *ip) {
   }
 
   ip->text[ip->text_start++] = 0;
-  interactive_invalidate_command_cache(ip);
 
   if (!cmd_in_buf(ip)) {
     ip->iflags &= ~CMD_IN_BUF;
@@ -1589,14 +1556,6 @@ static char *get_user_command(interactive_t *ip) {
 } /* get_user_command() */
 
 char *extract_first_command_for_test(interactive_t *ip) { return first_cmd_in_buf(ip); }
-
-int cached_command_end_for_test(interactive_t *ip) {
-  if (!ip) {
-    return -1;
-  }
-
-  return ip->text_command_end;
-}
 
 int process_ascii_chunk_for_test(interactive_t *ip, const unsigned char *buf, int num_bytes) {
   return process_ascii_chunk_internal(ip, buf, num_bytes);
