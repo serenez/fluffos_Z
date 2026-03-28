@@ -13,6 +13,8 @@ void stat_living_objects(outbuffer_t *);
 void add_command_enabled(object_t *);
 void remove_command_enabled(object_t *);
 void clear_parse_command_cache(object_t *);
+void set_user_parser_snapshot_hook_for_test(void (*hook)(object_t *), object_t *arg);
+void remove_sentence_directly_for_test(object_t *user, sentence_t *sentence);
 void remove_living_name(object_t *);
 object_t *find_living_object(const char *, int);
 void setup_new_commands(object_t *, object_t *);
@@ -41,6 +43,12 @@ void remove_sent(object_t *, object_t *);
   } while (0)
 #define clear_parse_command_cache(x) \
   do {                              \
+  } while (0)
+#define set_user_parser_snapshot_hook_for_test(x, y) \
+  do {                                              \
+  } while (0)
+#define remove_sentence_directly_for_test(x, y) \
+  do {                                          \
   } while (0)
 #define remove_living_name(x) \
   do {                        \

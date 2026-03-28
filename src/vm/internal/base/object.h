@@ -60,6 +60,7 @@
 struct sentence_t {
 #ifndef NO_ADD_ACTION
   const char *verb;
+  uint64_t serial;
   struct sentence_t *prev;
   struct sentence_t *owner_next;
   struct sentence_t *owner_head_next;

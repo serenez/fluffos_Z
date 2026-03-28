@@ -297,9 +297,6 @@ void get_user_data_mud(interactive_t *ip) {
     if (!input || evbuffer_get_length(input) == 0) {
       break;
     }
-    if (ip->text_end > 0) {
-      break;
-    }
   }
 
 }

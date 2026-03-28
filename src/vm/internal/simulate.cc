@@ -1663,6 +1663,7 @@ void add_light(object_t *p, int n) {
 
 static sentence_t *sent_free = nullptr;
 uint64_t tot_alloc_sentence;
+static uint64_t g_sentence_serial = 0;
 
 sentence_t *alloc_sentence() {
   sentence_t *p;
@@ -1676,6 +1677,7 @@ sentence_t *alloc_sentence() {
   }
 #ifndef NO_ADD_ACTION
   p->verb = nullptr;
+  p->serial = ++g_sentence_serial;
   p->prev = nullptr;
   p->owner_next = nullptr;
   p->owner_head_next = nullptr;
@@ -1723,6 +1725,7 @@ void free_sentence(sentence_t *p) {
     free_string(p->verb);
   }
   p->verb = nullptr;
+  p->serial = 0;
   p->prev = nullptr;
   p->owner_next = nullptr;
   p->owner_head_next = nullptr;

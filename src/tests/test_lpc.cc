@@ -7,10 +7,18 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+#ifndef _WIN32
+#include <limits.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#else
+#include <windows.h>
+#endif
 #include "base/package_api.h"
 
 #include "mainlib.h"
@@ -45,6 +53,8 @@ bool schedule_user_logon_for_test(event_base *base, interactive_t *user);
 void cleanup_pending_user_for_test(interactive_t *user, bool close_socket);
 void reset_user_logon_callback_runs_for_test();
 int user_logon_callback_runs_for_test();
+void set_user_parser_snapshot_hook_for_test(void (*hook)(object_t *), object_t *arg);
+void remove_sentence_directly_for_test(object_t *user, sentence_t *sentence);
 void f_remove_action();
 #ifdef F_COMPRESS_FILE
 void f_compress_file();
@@ -57,6 +67,35 @@ void f_in_edit();
 namespace {
 
 std::filesystem::path g_test_binary_dir;
+
+std::filesystem::path current_executable_dir() {
+#ifdef _WIN32
+  std::wstring buffer(MAX_PATH, L'\0');
+  while (true) {
+    auto size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (size == 0) {
+      return std::filesystem::current_path();
+    }
+    if (size < buffer.size() - 1) {
+      buffer.resize(size);
+      return std::filesystem::path(buffer).parent_path();
+    }
+    buffer.resize(buffer.size() * 2);
+  }
+#else
+  std::vector<char> buffer(PATH_MAX);
+  while (true) {
+    auto size = readlink("/proc/self/exe", buffer.data(), buffer.size());
+    if (size < 0) {
+      return std::filesystem::current_path();
+    }
+    if (static_cast<size_t>(size) < buffer.size()) {
+      return std::filesystem::path(std::string(buffer.data(), static_cast<size_t>(size))).parent_path();
+    }
+    buffer.resize(buffer.size() * 2);
+  }
+#endif
+}
 
 std::streamoff compile_log_size() {
   std::ifstream file("log/compile", std::ios::binary | std::ios::ate);
@@ -801,30 +840,128 @@ struct CommandResult {
 };
 
 std::filesystem::path src_binary_path(const std::string &name) {
-  return g_test_binary_dir.parent_path() / name;
+  auto executable_name = std::filesystem::path(name);
+#ifdef _WIN32
+  if (executable_name.extension().empty()) {
+    executable_name += ".exe";
+  }
+#endif
+
+  auto is_multi_config_dir = [](const std::filesystem::path &dir) {
+    auto name = dir.filename().string();
+    return name == "Debug" || name == "Release" || name == "RelWithDebInfo" || name == "MinSizeRel";
+  };
+
+  auto contains_component = [](const std::filesystem::path &path, const std::string &component) {
+    return std::any_of(path.begin(), path.end(), [&](const auto &part) { return part == component; });
+  };
+
+  auto score_candidate = [&](const std::filesystem::path &path, bool prefer_tools) {
+    int score = 0;
+    if (prefer_tools == contains_component(path, "tools")) {
+      score += 100;
+    }
+    if (is_multi_config_dir(g_test_binary_dir) &&
+        contains_component(path, g_test_binary_dir.filename().string())) {
+      score += 50;
+    }
+    score -= static_cast<int>(path.native().size());
+    return score;
+  };
+
+  auto search_root = g_test_binary_dir.parent_path();
+  if (is_multi_config_dir(g_test_binary_dir)) {
+    search_root = search_root.parent_path();
+  }
+  if (search_root.filename() == "tests") {
+    search_root = search_root.parent_path();
+  }
+
+  std::vector<std::filesystem::path> candidates;
+  std::error_code ec;
+  if (!search_root.empty() && std::filesystem::exists(search_root, ec)) {
+    std::filesystem::directory_options options = std::filesystem::directory_options::skip_permission_denied;
+    for (std::filesystem::recursive_directory_iterator it(search_root, options, ec), end; it != end; it.increment(ec)) {
+      if (ec) {
+        ec.clear();
+        continue;
+      }
+      if (it.depth() > 4) {
+        it.disable_recursion_pending();
+        continue;
+      }
+      if (!it->is_regular_file(ec)) {
+        continue;
+      }
+      if (it->path().filename() == executable_name) {
+        candidates.push_back(it->path());
+      }
+    }
+  }
+
+  if (!candidates.empty()) {
+    return *std::max_element(candidates.begin(), candidates.end(),
+                             [&](const auto &lhs, const auto &rhs) {
+                               return score_candidate(lhs, false) < score_candidate(rhs, false);
+                             });
+  }
+
+  return search_root / executable_name;
 }
 
 std::filesystem::path tool_binary_path(const std::string &name) {
-  return src_binary_path("tools") / name;
+  auto executable_name = std::filesystem::path(name);
+#ifdef _WIN32
+  if (executable_name.extension().empty()) {
+    executable_name += ".exe";
+  }
+#endif
+
+  auto search_root = g_test_binary_dir.parent_path();
+  auto is_multi_config_dir = [](const std::filesystem::path &dir) {
+    auto config = dir.filename().string();
+    return config == "Debug" || config == "Release" || config == "RelWithDebInfo" || config == "MinSizeRel";
+  };
+  if (is_multi_config_dir(g_test_binary_dir)) {
+    search_root = search_root.parent_path();
+  }
+  if (search_root.filename() == "tests") {
+    search_root = search_root.parent_path();
+  }
+
+  std::vector<std::filesystem::path> candidates;
+  std::error_code ec;
+  if (!search_root.empty() && std::filesystem::exists(search_root, ec)) {
+    std::filesystem::directory_options options = std::filesystem::directory_options::skip_permission_denied;
+    for (std::filesystem::recursive_directory_iterator it(search_root, options, ec), end; it != end; it.increment(ec)) {
+      if (ec) {
+        ec.clear();
+        continue;
+      }
+      if (it.depth() > 4) {
+        it.disable_recursion_pending();
+        continue;
+      }
+      if (!it->is_regular_file(ec)) {
+        continue;
+      }
+      if (it->path().filename() == executable_name &&
+          std::any_of(it->path().begin(), it->path().end(),
+                      [](const auto &part) { return part == "tools"; })) {
+        candidates.push_back(it->path());
+      }
+    }
+  }
+
+  if (!candidates.empty()) {
+    return *std::min_element(candidates.begin(), candidates.end(),
+                             [](const auto &lhs, const auto &rhs) {
+                               return lhs.native().size() < rhs.native().size();
+                             });
+  }
+
+  return search_root / "tools" / executable_name;
 }
-
-struct CurrentWorkingDirectoryGuard {
-  explicit CurrentWorkingDirectoryGuard(const std::filesystem::path &next)
-      : active(!next.empty()), previous(active ? std::filesystem::current_path() : std::filesystem::path()) {
-    if (active) {
-      std::filesystem::current_path(next);
-    }
-  }
-
-  ~CurrentWorkingDirectoryGuard() {
-    if (active) {
-      std::filesystem::current_path(previous);
-    }
-  }
-
-  bool active = false;
-  std::filesystem::path previous;
-};
 
 struct ScopedTestDirectory {
   explicit ScopedTestDirectory(const std::string &prefix) {
@@ -845,37 +982,160 @@ CommandResult run_command_capture(const std::filesystem::path &executable,
                                  const std::vector<std::string> &args = {},
                                  const std::filesystem::path &working_directory = {}) {
   CommandResult result;
-  std::string command = "\"" + executable.string() + "\"";
-  for (const auto &arg : args) {
-    command += " " + arg;
-  }
-  CurrentWorkingDirectoryGuard working_directory_guard(working_directory);
 #ifdef _WIN32
-  const auto capture_file = g_test_binary_dir / "tool_command_capture.txt";
-  std::remove(capture_file.string().c_str());
-  result.exit_code =
-      std::system(("cmd /c \"" + command + " > \"" + capture_file.string() + "\" 2>&1\"").c_str());
-  std::ifstream file(capture_file, std::ios::binary);
-  if (file.is_open()) {
-    std::ostringstream content;
-    content << file.rdbuf();
-    result.output = content.str();
+  auto quote_argument = [](const std::wstring &arg) {
+    if (arg.empty()) {
+      return std::wstring(L"\"\"");
+    }
+    if (arg.find_first_of(L" \t\n\v\"") == std::wstring::npos) {
+      return arg;
+    }
+
+    std::wstring quoted = L"\"";
+    size_t backslashes = 0;
+    for (wchar_t ch : arg) {
+      if (ch == L'\\') {
+        backslashes++;
+        continue;
+      }
+      if (ch == L'"') {
+        quoted.append(backslashes * 2 + 1, L'\\');
+        quoted.push_back(L'"');
+        backslashes = 0;
+        continue;
+      }
+      if (backslashes > 0) {
+        quoted.append(backslashes, L'\\');
+        backslashes = 0;
+      }
+      quoted.push_back(ch);
+    }
+    if (backslashes > 0) {
+      quoted.append(backslashes * 2, L'\\');
+    }
+    quoted.push_back(L'"');
+    return quoted;
+  };
+
+  SECURITY_ATTRIBUTES sa{};
+  sa.nLength = sizeof(sa);
+  sa.bInheritHandle = TRUE;
+
+  HANDLE read_pipe = nullptr;
+  HANDLE write_pipe = nullptr;
+  if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
+    return result;
   }
-  std::remove(capture_file.string().c_str());
-#else
-  FILE *pipe = popen((command + " 2>&1").c_str(), "r");
-  if (pipe == nullptr) {
+  SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
+
+  std::wstring command_line = quote_argument(executable.wstring());
+  for (const auto &arg : args) {
+    command_line.push_back(L' ');
+    command_line += quote_argument(std::filesystem::path(arg).wstring());
+  }
+
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+  si.hStdOutput = write_pipe;
+  si.hStdError = write_pipe;
+
+  PROCESS_INFORMATION pi{};
+  std::vector<wchar_t> command_buffer(command_line.begin(), command_line.end());
+  command_buffer.push_back(L'\0');
+  auto working_directory_w = working_directory.empty() ? std::wstring() : working_directory.wstring();
+
+  if (!CreateProcessW(nullptr, command_buffer.data(), nullptr, nullptr, TRUE, 0, nullptr,
+                      working_directory.empty() ? nullptr : working_directory_w.c_str(), &si, &pi)) {
+    auto error_code = GetLastError();
+    result.exit_code = -1;
+    result.output = "CreateProcessW failed: " + std::to_string(error_code);
+    CloseHandle(read_pipe);
+    CloseHandle(write_pipe);
     return result;
   }
 
-  std::array<char, 256> buffer{};
-  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-    result.output += buffer.data();
+  CloseHandle(write_pipe);
+
+  std::array<char, 4096> buffer{};
+  DWORD bytes_read = 0;
+  while (ReadFile(read_pipe, buffer.data(), static_cast<DWORD>(buffer.size()), &bytes_read, nullptr) &&
+         bytes_read > 0) {
+    result.output.append(buffer.data(), bytes_read);
   }
-  result.exit_code = pclose(pipe);
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  DWORD exit_code = 0;
+  GetExitCodeProcess(pi.hProcess, &exit_code);
+  result.exit_code = static_cast<int>(exit_code);
+
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  CloseHandle(read_pipe);
+#else
+  int pipefd[2];
+  if (pipe(pipefd) != 0) {
+    return result;
+  }
+
+  pid_t pid = fork();
+  if (pid == -1) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return result;
+  }
+
+  if (pid == 0) {
+    if (!working_directory.empty()) {
+      std::filesystem::current_path(working_directory);
+    }
+    dup2(pipefd[1], STDOUT_FILENO);
+    dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::vector<std::string> owned_args;
+    owned_args.reserve(args.size() + 1);
+    owned_args.push_back(executable.string());
+    owned_args.insert(owned_args.end(), args.begin(), args.end());
+
+    std::vector<char *> argv;
+    argv.reserve(owned_args.size() + 1);
+    for (auto &arg : owned_args) {
+      argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+    execv(executable.c_str(), argv.data());
+    _exit(127);
+  }
+
+  close(pipefd[1]);
+  std::array<char, 4096> buffer{};
+  ssize_t bytes_read = 0;
+  while ((bytes_read = read(pipefd[0], buffer.data(), buffer.size())) > 0) {
+    result.output.append(buffer.data(), static_cast<size_t>(bytes_read));
+  }
+  close(pipefd[0]);
+
+  int status = 0;
+  waitpid(pid, &status, 0);
+  if (WIFEXITED(status)) {
+    result.exit_code = WEXITSTATUS(status);
+  }
 #endif
   return result;
 }
+
+namespace {
+sentence_t *g_user_parser_snapshot_hook_sentence = nullptr;
+void remove_target_sentences_snapshot_hook(object_t *user) {
+  if (user != nullptr && g_user_parser_snapshot_hook_sentence != nullptr) {
+    remove_sentence_directly_for_test(user, g_user_parser_snapshot_hook_sentence);
+    g_user_parser_snapshot_hook_sentence = nullptr;
+  }
+}
+}  // namespace
 
 std::string take_interactive_output(interactive_t *ip) {
   if (ip == nullptr || ip->ev_buffer == nullptr) {
@@ -957,7 +1217,7 @@ struct ConfigIntGuard {
 class DriverTest : public ::testing::Test {
  public:
   static void SetUpTestSuite() {
-    g_test_binary_dir = std::filesystem::current_path();
+    g_test_binary_dir = current_executable_dir();
     chdir(TESTSUITE_DIR);
     // Initialize libevent, This should be done before executing LPC.
     init_main("etc/config.test", false);
@@ -1184,7 +1444,7 @@ TEST_F(DriverTest, TestIncludeResolutionHandlesLongCurrentFilenameSafely) {
 }
 
 TEST_F(DriverTest, TestBuildAppliesReportsMissingInputFileGracefully) {
-  auto result = run_command_capture(tool_binary_path("build_applies.exe"), {"missing_source_dir"});
+  auto result = run_command_capture(tool_binary_path("build_applies"), {"missing_source_dir"});
 
   EXPECT_NE(0, result.exit_code);
   EXPECT_NE(result.output.find("failed to open"), std::string::npos);
@@ -1199,7 +1459,7 @@ TEST_F(DriverTest, TestMakeOptionsDefsHandlesLongMissingIncludeGracefully) {
   std::remove(input_file.c_str());
   write_test_file(input_file, "#include \"" + include_name + "\"\n");
 
-  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+  auto result = run_command_capture(tool_binary_path("make_options_defs"),
                                     {"-I.", "preprocessor_long_include_test.h"});
 
   EXPECT_NE(0, result.exit_code);
@@ -1217,7 +1477,7 @@ TEST_F(DriverTest, TestMakeOptionsDefsHandlesLongUnknownDirectiveGracefully) {
   std::remove(input_file.c_str());
   write_test_file(input_file, directive);
 
-  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+  auto result = run_command_capture(tool_binary_path("make_options_defs"),
                                     {"-I.", "preprocessor_unknown_directive_test.h"});
 
   EXPECT_NE(0, result.exit_code);
@@ -1230,7 +1490,7 @@ TEST_F(DriverTest, TestMakeOptionsDefsHandlesLongUnknownDirectiveGracefully) {
 TEST_F(DriverTest, TestO2JsonReportsOutputOpenFailure) {
   ScopedTestDirectory temp_dir("o2json_output_failure");
   const auto input_file = (std::filesystem::current_path() / "test.o").generic_string();
-  auto result = run_command_capture(src_binary_path("o2json.exe"),
+  auto result = run_command_capture(src_binary_path("o2json"),
                                     {input_file, "missing_dir/out.json"}, temp_dir.path);
 
   EXPECT_NE(0, result.exit_code);
@@ -1245,7 +1505,7 @@ TEST_F(DriverTest, TestJson2OReportsOutputOpenFailure) {
                   "  \"program_name\": \"/test\",\n"
                   "  \"variables\": []\n"
                   "}\n");
-  auto result = run_command_capture(src_binary_path("json2o.exe"),
+  auto result = run_command_capture(src_binary_path("json2o"),
                                     {input_file.filename().generic_string(), "missing_dir/out.o"},
                                     temp_dir.path);
 
@@ -1257,7 +1517,7 @@ TEST_F(DriverTest, TestGenerateKeywordsReportsOutputOpenFailure) {
   ScopedTestDirectory temp_dir("generate_keywords_output_failure");
   ASSERT_TRUE(std::filesystem::create_directory(temp_dir.path / "keywords.json"));
 
-  auto result = run_command_capture(src_binary_path("generate_keywords.exe"), {}, temp_dir.path);
+  auto result = run_command_capture(src_binary_path("generate_keywords"), {}, temp_dir.path);
 
   EXPECT_NE(0, result.exit_code);
   EXPECT_NE(result.output.find("cannot open output file keywords.json"), std::string::npos);
@@ -1268,7 +1528,7 @@ TEST_F(DriverTest, TestMakeOptionsDefsReportsOutputOpenFailure) {
   write_test_file((temp_dir.path / "options_input.h").string(), "#define LOCAL_OPTION 1\n");
   ASSERT_TRUE(std::filesystem::create_directory(temp_dir.path / "options.autogen.h"));
 
-  auto result = run_command_capture(tool_binary_path("make_options_defs.exe"),
+  auto result = run_command_capture(tool_binary_path("make_options_defs"),
                                     {"-I.", "options_input.h"}, temp_dir.path);
 
   EXPECT_NE(0, result.exit_code);
@@ -1284,7 +1544,7 @@ TEST_F(DriverTest, TestMakeFuncHandlesLongAliasWithoutOverflow) {
                            long_arg_types + "," + long_arg_types + "," + long_arg_types + ");\n";
   write_test_file((temp_dir.path / "long_alias.spec").string(), spec);
 
-  auto result = run_command_capture(tool_binary_path("make_func.exe"), {"long_alias.spec"}, temp_dir.path);
+  auto result = run_command_capture(tool_binary_path("make_func"), {"long_alias.spec"}, temp_dir.path);
 
   EXPECT_EQ(0, result.exit_code);
   EXPECT_TRUE(std::filesystem::exists(temp_dir.path / "efuns.autogen.cc"));
@@ -2081,6 +2341,37 @@ TEST_F(DriverTest, TestUserParserHonorsRemoveSentAfterPreviousParse) {
   destroy_lpc_object_for_test(&target, "DriverTest::TestUserParserHonorsRemoveSentAfterPreviousParse target");
 }
 
+TEST_F(DriverTest, TestUserParserSkipsSentenceRemovedAfterSnapshotCollection) {
+  auto *exact_owner = load_lpc_object_for_test("/clone/user_parser_probe", true);
+  auto *default_owner = load_lpc_object_for_test("/clone/user_parser_probe", true);
+  ASSERT_NE(exact_owner, nullptr);
+  ASSERT_NE(default_owner, nullptr);
+  call_lpc_method(exact_owner, "reset_state");
+  call_lpc_method(default_owner, "reset_state");
+
+  ManualCommandUser user;
+  ASSERT_NE(user.user, nullptr);
+  auto *exact_sentence = user.prepend_sentence(exact_owner, "look", "record_exact_one", 0);
+  user.prepend_sentence(default_owner, "", "record_default_zero", 0);
+
+  g_user_parser_snapshot_hook_sentence = exact_sentence;
+  set_user_parser_snapshot_hook_for_test(remove_target_sentences_snapshot_hook, user.user);
+  EXPECT_EQ(0, user.run_command("look gem"));
+  set_user_parser_snapshot_hook_for_test(nullptr, nullptr);
+  g_user_parser_snapshot_hook_sentence = nullptr;
+
+  auto exact_history = lpc_array_to_strings(call_lpc_method(exact_owner, "query_history"));
+  auto default_history = lpc_array_to_strings(call_lpc_method(default_owner, "query_history"));
+  EXPECT_TRUE(exact_history.empty());
+  ASSERT_EQ(1u, default_history.size());
+  EXPECT_EQ("default:gem", default_history[0]);
+
+  destroy_lpc_object_for_test(
+      &default_owner, "DriverTest::TestUserParserSkipsSentenceRemovedAfterSnapshotCollection default_owner");
+  destroy_lpc_object_for_test(
+      &exact_owner, "DriverTest::TestUserParserSkipsSentenceRemovedAfterSnapshotCollection exact_owner");
+}
+
 TEST_F(DriverTest, TestRemoveSentRemovesOnlyTargetOwnerCommands) {
   auto *target = load_lpc_object_for_test("/clone/user_parser_probe", true);
   auto *survivor = load_lpc_object_for_test("/clone/user_parser_probe", true);
@@ -2591,6 +2882,60 @@ TEST_F(DriverTest, TestGetUserDataMudProcessesMultiplePacketsFromSingleBufferedR
   interactive_free_text(ip);
   FREE(ip);
   destroy_lpc_object_for_test(&ob, "DriverTest.TestGetUserDataMudProcessesMultiplePacketsFromSingleBufferedRead");
+}
+
+TEST_F(DriverTest, TestGetUserDataMudConsumesBufferedPacketsWithoutSecondReadEvent) {
+  auto *ob = load_lpc_object_for_test("/clone/input_capture_user");
+  ASSERT_NE(ob, nullptr);
+  call_lpc_method(ob, "clear_inputs");
+
+  auto *base = event_base_new();
+  ASSERT_NE(base, nullptr);
+
+  auto *ip = user_add();
+  ASSERT_NE(ip, nullptr);
+  ASSERT_NE(ip->text, nullptr);
+  ip->ob = ob;
+  ip->connection_type = PORT_TYPE_MUD;
+  bufferevent *pair[2]{};
+  ASSERT_EQ(0, bufferevent_pair_new(base, BEV_OPT_CLOSE_ON_FREE, pair));
+  ASSERT_NE(pair[0], nullptr);
+  ASSERT_NE(pair[1], nullptr);
+  ASSERT_EQ(0, bufferevent_enable(pair[0], EV_READ | EV_WRITE));
+  ASSERT_EQ(0, bufferevent_enable(pair[1], EV_READ | EV_WRITE));
+  ip->ev_buffer = pair[0];
+  ob->interactive = ip;
+
+  auto packet1 = build_mud_string_packet("first");
+  auto packet2 = build_mud_string_packet("second");
+  auto packets = packet1 + packet2;
+  ASSERT_EQ(0, bufferevent_write(pair[1], packets.data(), packets.size()));
+  auto *input = bufferevent_get_input(ip->ev_buffer);
+  ASSERT_NE(input, nullptr);
+  for (int i = 0; i < 8 && evbuffer_get_length(input) == 0; i++) {
+    event_base_loop(base, EVLOOP_NONBLOCK);
+  }
+  ASSERT_GT(evbuffer_get_length(input), 0u);
+
+  get_user_data(ip);
+
+  auto history = lpc_array_to_strings(call_lpc_method(ob, "query_input_history"));
+  ASSERT_EQ(2u, history.size());
+  EXPECT_EQ("first", history[0]);
+  EXPECT_EQ("second", history[1]);
+  EXPECT_EQ(0, ip->text_end);
+  EXPECT_EQ(0u, evbuffer_get_length(input));
+
+  ob->interactive = nullptr;
+  bufferevent_free(pair[1]);
+  bufferevent_free(ip->ev_buffer);
+  ip->ev_buffer = nullptr;
+  user_del(ip);
+  interactive_free_text(ip);
+  FREE(ip);
+  destroy_lpc_object_for_test(&ob,
+                              "DriverTest::TestGetUserDataMudConsumesBufferedPacketsWithoutSecondReadEvent");
+  event_base_free(base);
 }
 
 TEST_F(DriverTest, TestGetUserDataMudPreservesPartialSecondPacketAcrossReads) {

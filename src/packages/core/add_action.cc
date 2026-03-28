@@ -33,6 +33,7 @@ constexpr unsigned char kInitLookupPresent = 2;
 
 struct ordered_sentence_t {
   sentence_t *sentence;
+  uint64_t serial;
   uint32_t order;
 };
 
@@ -43,6 +44,8 @@ struct parse_command_cache_t {
 };
 
 std::unordered_map<object_t *, parse_command_cache_t> g_parse_command_cache;
+void (*g_user_parser_snapshot_hook_for_test)(object_t *) = nullptr;
+object_t *g_user_parser_snapshot_hook_arg_for_test = nullptr;
 
 struct owner_bucket_t {
   sentence_t **slot;
@@ -134,7 +137,7 @@ parse_command_cache_t build_parse_command_cache(object_t *ob) {
   uint32_t order = 0;
 
   for (auto *sentence = ob->sent; sentence; sentence = sentence->next, order++) {
-    ordered_sentence_t ordered{sentence, order};
+    ordered_sentence_t ordered{sentence, sentence->serial, order};
     if (sentence->flags & (V_NOSPACE | V_SHORT)) {
       cache.specials.push_back(ordered);
     } else if (sentence->verb[0] == '\0') {
@@ -176,6 +179,15 @@ void collect_matching_sentences(object_t *ob, const char *buff, const char *user
                 return lhs.order < rhs.order;
               });
   }
+}
+
+sentence_t *resolve_live_sentence(object_t *user, const ordered_sentence_t &ordered) {
+  for (auto *sentence = user->sent; sentence != nullptr; sentence = sentence->next) {
+    if (sentence == ordered.sentence && sentence->serial == ordered.serial) {
+      return sentence;
+    }
+  }
+  return nullptr;
 }
 
 bool program_has_init(program_t *prog) {
@@ -249,6 +261,21 @@ void maybe_apply_init(object_t *target, object_t *new_command_giver) {
 }  // namespace
 
 void clear_parse_command_cache(object_t *ob) { g_parse_command_cache.erase(ob); }
+
+void set_user_parser_snapshot_hook_for_test(void (*hook)(object_t *), object_t *arg) {
+  g_user_parser_snapshot_hook_for_test = hook;
+  g_user_parser_snapshot_hook_arg_for_test = arg;
+}
+
+void remove_sentence_directly_for_test(object_t *user, sentence_t *sentence) {
+  if (user == nullptr || sentence == nullptr) {
+    return;
+  }
+  unlink_sentence_from_owner_bucket(user, sentence);
+  unlink_sentence_from_visible_list(user, sentence);
+  free_sentence(sentence);
+  clear_parse_command_cache(user);
+}
 
 void init_living() {
   // make sure size is power of 2.
@@ -635,8 +662,14 @@ static int user_parser(char *buff) {
   save_illegal_sentence_action = illegal_sentence_action;
   illegal_sentence_action = 0;
   collect_matching_sentences(command_giver, buff, user_verb, &matching_sentences);
+  if (g_user_parser_snapshot_hook_for_test != nullptr) {
+    g_user_parser_snapshot_hook_for_test(g_user_parser_snapshot_hook_arg_for_test);
+  }
   for (auto const &ordered : matching_sentences) {
-    s = ordered.sentence;
+    s = resolve_live_sentence(command_giver, ordered);
+    if (s == nullptr) {
+      continue;
+    }
     svalue_t *ret;
     /*
      * Now we have found a special sentence !
